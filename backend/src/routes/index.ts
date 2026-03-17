@@ -1,0 +1,25 @@
+const express = require('express');
+
+const { testSupabase } = require('./test');
+const { createUser, getUserByTelegramId } = require('./users');
+const { createRequest, getRequests } = require('./requests');
+const { createDonation, getDonations } = require('./donations');
+const { getProfile, getProfileByTelegramId } = require('./profile');
+
+const router = express.Router();
+
+router.get('/test', testSupabase);
+
+router.post('/users', createUser);
+router.get('/users/by-telegram/:telegramId', getUserByTelegramId);
+
+router.post('/requests', createRequest);
+router.get('/requests', getRequests);
+
+router.post('/donations', createDonation);
+router.get('/donations', getDonations);
+
+router.get('/profile/:id', getProfile);
+router.get('/profile-by-telegram/:telegramId', getProfileByTelegramId);
+
+module.exports = { router };
