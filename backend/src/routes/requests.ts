@@ -18,6 +18,36 @@ function buildProgressBar(current, target) {
 async function createRequest(req, res) {
   const { user_id, title, description, target_amount } = req.body;
 
+  if (!user_id || !title || !target_amount) {
+    return res.status(400).json({
+      error: 'Campi obbligatori mancanti: user_id, title, target_amount'
+    });
+  }
+
+  if (Number(target_amount) <= 0) {
+    return res.status(400).json({
+      error: 'target_amount deve essere maggiore di 0'
+    });
+  }
+
+  if (Number(target_amount) > 500) {
+    return res.status(400).json({
+      error: 'target_amount troppo alto. Limite attuale: 500'
+    });
+  }
+
+  const { data: userExists, error: userCheckError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', user_id)
+    .single();
+
+  if (userCheckError || !userExists) {
+    return res.status(404).json({
+      error: 'Utente non trovato'
+    });
+  }
+
   const { data, error } = await supabase
     .from('requests')
     .insert([

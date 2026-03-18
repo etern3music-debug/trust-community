@@ -1,5 +1,6 @@
 const express = require('express');
 const dotenv = require('dotenv');
+const cors = require('cors');
 
 dotenv.config();
 
@@ -8,6 +9,7 @@ require('./telegram/bot');
 
 const app = express();
 
+app.use(cors());
 app.use(express.json());
 
 app.get('/', (req, res) => {

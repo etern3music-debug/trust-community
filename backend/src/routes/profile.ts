@@ -1,5 +1,18 @@
 const { supabase } = require('../config/supabase');
 
+function buildProgressBar(current, target) {
+  const safeTarget = target > 0 ? target : 1;
+  const percent = Math.min(100, Math.round((current / safeTarget) * 100));
+  const filledBlocks = Math.round(percent / 10);
+  const emptyBlocks = 10 - filledBlocks;
+  const bar = '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
+
+  return {
+    percent,
+    bar,
+  };
+}
+
 async function buildProfileByInternalUserId(userId, res) {
   const { data: user, error: userError } = await supabase
     .from('users')
@@ -77,4 +90,47 @@ async function getProfileByTelegramId(req, res) {
   return buildProfileByInternalUserId(user.id, res);
 }
 
-module.exports = { getProfile, getProfileByTelegramId };
+async function getMyRequestsByTelegramId(req, res) {
+  const telegramUserId = req.params.telegramId;
+
+  const { data: user, error: userError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('telegram_user_id', telegramUserId)
+    .single();
+
+  if (userError || !user) {
+    return res.status(404).json({ error: 'Utente non trovato' });
+  }
+
+  const { data: requests, error: requestsError } = await supabase
+    .from('requests')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('id', { ascending: false });
+
+  if (requestsError) {
+    return res.status(500).json({ error: requestsError.message });
+  }
+
+  const enriched = requests.map((request) => {
+    const progress = buildProgressBar(
+      request.current_amount || 0,
+      request.target_amount || 0
+    );
+
+    return {
+      ...request,
+      progress_percent: progress.percent,
+      progress_bar: progress.bar,
+    };
+  });
+
+  return res.json(enriched);
+}
+
+module.exports = {
+  getProfile,
+  getProfileByTelegramId,
+  getMyRequestsByTelegramId
+};

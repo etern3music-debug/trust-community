@@ -2,7 +2,6 @@ const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
-
 const bot = new TelegramBot(token, { polling: true });
 
 // /start
@@ -11,8 +10,33 @@ bot.onText(/\/start/, (msg) => {
 
   bot.sendMessage(
     chatId,
-    'Bot attivo ✅\nComandi disponibili:\n/start\n/profilo\n/richieste\n/mioid\n/crearichiesta'
+    'Bot attivo ✅\nUsa /help per vedere tutti i comandi.'
   );
+});
+
+// /help
+bot.onText(/\/help/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  const text =
+`📘 Comandi disponibili
+
+/start → avvia il bot
+/help → mostra questo elenco
+/mioid → mostra il tuo Telegram user ID
+/profilo → mostra il tuo profilo
+/richieste → mostra le richieste attive
+/mie_richieste → mostra le richieste create da te
+
+/crearichiesta titolo | descrizione | importo
+Esempio:
+/crearichiesta Aiuto urgente | Mi servono 25 euro | 25
+
+/dona request_id importo
+Esempio:
+/dona 3 5`;
+
+  await bot.sendMessage(chatId, text);
 });
 
 // /profilo
@@ -26,7 +50,6 @@ bot.onText(/\/profilo/, async (msg) => {
     );
 
     const profile = response.data;
-
     const badgeNames =
       profile.badges.map((b) => b.badge).join(', ') || 'Nessuno';
 
@@ -86,6 +109,37 @@ ${request.progress_bar}`;
   }
 });
 
+// /mie_richieste
+bot.onText(/\/mie_richieste/, async (msg) => {
+  const chatId = msg.chat.id;
+  const telegramUserId = msg.from.id;
+
+  try {
+    const response = await axios.get(
+      `http://localhost:3001/api/my-requests-by-telegram/${telegramUserId}`
+    );
+
+    const requests = response.data;
+
+    if (!requests || requests.length === 0) {
+      await bot.sendMessage(chatId, 'Non hai ancora creato richieste.');
+      return;
+    }
+
+    const text = requests.slice(0, 10).map((request) => {
+      return `🧾 Mia richiesta #${request.id}
+📝 ${request.title}
+💰 ${request.current_amount}€ / ${request.target_amount}€
+📊 ${request.progress_percent}%
+${request.progress_bar}`;
+    }).join('\n\n');
+
+    await bot.sendMessage(chatId, text);
+  } catch (error) {
+    await bot.sendMessage(chatId, 'Errore nel recupero delle tue richieste.');
+  }
+});
+
 // /mioid
 bot.onText(/\/mioid/, async (msg) => {
   const chatId = msg.chat.id;
@@ -126,14 +180,12 @@ bot.onText(/\/crearichiesta (.+)/, async (msg, match) => {
       return;
     }
 
-    // 1. trova utente dal telegram_user_id
     const userResponse = await axios.get(
       `http://localhost:3001/api/users/by-telegram/${telegramUserId}`
     );
 
     const user = userResponse.data;
 
-    // 2. crea la request con user.id interno
     const response = await axios.post('http://localhost:3001/api/requests', {
       user_id: user.id,
       title,
@@ -152,10 +204,60 @@ Titolo: ${created.title}
 Target: ${created.target_amount}€`
     );
   } catch (error) {
+    const backendMessage =
+      error.response?.data?.error || 'Errore nella creazione della richiesta. Controlla il tuo profilo.';
+
+    await bot.sendMessage(chatId, `❌ ${backendMessage}`);
+  }
+});
+
+// /dona
+bot.onText(/\/dona (\d+) (\d+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const telegramUserId = msg.from.id;
+
+  try {
+    const request_id = Number(match[1]);
+    const amount = Number(match[2]);
+
+    if (!request_id || !amount) {
+      await bot.sendMessage(
+        chatId,
+        'Formato non valido.\nUsa: /dona request_id importo'
+      );
+      return;
+    }
+
+    const userResponse = await axios.get(
+      `http://localhost:3001/api/users/by-telegram/${telegramUserId}`
+    );
+
+    const user = userResponse.data;
+
+    const donationResponse = await axios.post(
+      'http://localhost:3001/api/donations',
+      {
+        request_id,
+        donor_user_id: user.id,
+        amount
+      }
+    );
+
+    const result = donationResponse.data;
+
     await bot.sendMessage(
       chatId,
-      'Errore nella creazione della richiesta. Controlla che il tuo profilo sia registrato nel database.'
+      `💸 Donazione completata!
+
+Hai donato: ${result.actual_donated_amount}€
+Nuovo score: ${result.donor_new_score}
+Livello: ${result.donor_new_level}`
     );
+  } catch (error) {
+    const backendMessage =
+      error.response?.data?.error || 'Errore nella donazione. Controlla request_id o profilo.';
+
+    await bot.sendMessage(chatId, `❌ ${backendMessage}`);
   }
 });
 

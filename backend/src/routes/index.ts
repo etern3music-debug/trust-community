@@ -4,7 +4,11 @@ const { testSupabase } = require('./test');
 const { createUser, getUserByTelegramId } = require('./users');
 const { createRequest, getRequests } = require('./requests');
 const { createDonation, getDonations } = require('./donations');
-const { getProfile, getProfileByTelegramId } = require('./profile');
+const {
+  getProfile,
+  getProfileByTelegramId,
+  getMyRequestsByTelegramId
+} = require('./profile');
 
 const router = express.Router();
 
@@ -21,5 +25,6 @@ router.get('/donations', getDonations);
 
 router.get('/profile/:id', getProfile);
 router.get('/profile-by-telegram/:telegramId', getProfileByTelegramId);
+router.get('/my-requests-by-telegram/:telegramId', getMyRequestsByTelegramId);
 
 module.exports = { router };

@@ -15,7 +15,10 @@ function buildProgressBar(current, target) {
   const emptyBlocks = 10 - filledBlocks;
   const bar = '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
 
-  return { percent, bar };
+  return {
+    percent,
+    bar,
+  };
 }
 
 async function ensureBadge(userId, badgeName) {
@@ -36,17 +39,24 @@ async function ensureBadge(userId, badgeName) {
 }
 
 async function createDonation(req, res) {
-  console.log('>>> createDonation chiamata');
   const { request_id, donor_user_id, amount } = req.body;
-  console.log('BODY:', req.body);
 
-  const { data: donationData, error: donationError } = await supabase
-    .from('donations')
-    .insert([{ request_id, donor_user_id, amount }])
-    .select();
+  if (!request_id || !donor_user_id || !amount) {
+    return res.status(400).json({
+      error: 'Campi obbligatori mancanti: request_id, donor_user_id, amount'
+    });
+  }
 
-  if (donationError) {
-    return res.status(500).json({ error: donationError.message });
+  if (Number(amount) <= 0) {
+    return res.status(400).json({
+      error: 'amount deve essere maggiore di 0'
+    });
+  }
+
+  if (Number(amount) > 200) {
+    return res.status(400).json({
+      error: 'amount troppo alto. Limite attuale: 200'
+    });
   }
 
   const { data: requestData, error: requestError } = await supabase
@@ -55,13 +65,51 @@ async function createDonation(req, res) {
     .eq('id', request_id)
     .single();
 
-  if (requestError) {
-    return res.status(500).json({ error: requestError.message });
+  if (requestError || !requestData) {
+    return res.status(404).json({ error: 'Richiesta non trovata' });
   }
 
-  console.log('REQUEST LETTA:', requestData);
+  if (requestData.user_id === donor_user_id) {
+    return res.status(400).json({
+      error: 'Non puoi donare alla tua stessa richiesta'
+    });
+  }
 
-  const newAmount = (requestData.current_amount || 0) + amount;
+  if ((requestData.current_amount || 0) >= requestData.target_amount) {
+    return res.status(400).json({
+      error: 'Questa richiesta è già stata completata'
+    });
+  }
+
+  const remainingAmount = requestData.target_amount - (requestData.current_amount || 0);
+  const safeDonationAmount = Math.min(Number(amount), remainingAmount);
+
+  const { data: donorData, error: donorError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', donor_user_id)
+    .single();
+
+  if (donorError || !donorData) {
+    return res.status(404).json({ error: 'Donatore non trovato' });
+  }
+
+  const { data: donationData, error: donationError } = await supabase
+    .from('donations')
+    .insert([
+      {
+        request_id,
+        donor_user_id,
+        amount: safeDonationAmount,
+      },
+    ])
+    .select();
+
+  if (donationError) {
+    return res.status(500).json({ error: donationError.message });
+  }
+
+  const newAmount = (requestData.current_amount || 0) + safeDonationAmount;
 
   const { error: updateRequestError } = await supabase
     .from('requests')
@@ -70,16 +118,6 @@ async function createDonation(req, res) {
 
   if (updateRequestError) {
     return res.status(500).json({ error: updateRequestError.message });
-  }
-
-  const { data: donorData, error: donorError } = await supabase
-    .from('users')
-    .select('*')
-    .eq('id', donor_user_id)
-    .single();
-
-  if (donorError) {
-    return res.status(500).json({ error: donorError.message });
   }
 
   const newScore = (donorData.score || 0) + 5;
@@ -118,13 +156,8 @@ async function createDonation(req, res) {
 📊 Progresso: ${progress.percent}%
 ${progress.bar}`;
 
-    console.log('telegram_message_id:', requestData.telegram_message_id);
-
     if (requestData.telegram_message_id) {
       await editTelegramMessage(requestData.telegram_message_id, updatedMessage);
-      console.log('>>> Messaggio Telegram modificato');
-    } else {
-      console.log('>>> Nessun telegram_message_id, quindi non posso modificare');
     }
   } catch (telegramError) {
     console.error(
@@ -144,6 +177,7 @@ ${progress.bar}`;
 
   return res.json({
     donation: donationData,
+    actual_donated_amount: safeDonationAmount,
     updated_current_amount: newAmount,
     donor_new_score: newScore,
     donor_new_level: newLevel,
