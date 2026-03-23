@@ -42,6 +42,7 @@ export default function HomePage() {
     try {
       const tg = (window as any).Telegram?.WebApp;
       const telegramUserId = tg?.initDataUnsafe?.user?.id;
+      alert(`Telegram user id: ${telegramUserId}`);
 
       if (!telegramUserId) {
         alert('Errore: utente Telegram non trovato');
