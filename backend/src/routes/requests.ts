@@ -54,6 +54,45 @@ async function createRequest(req, res) {
     });
   }
 
+  if (!userExists.payment_link || !String(userExists.payment_link).trim()) {
+    return res.status(400).json({
+      error: 'Devi salvare un payment link nel profilo prima di creare una richiesta'
+    });
+  }
+
+    let levelMaxAmount = 50;
+
+  if (userExists.level >= 4) {
+    levelMaxAmount = 500;
+  } else if (userExists.level === 3) {
+    levelMaxAmount = 200;
+  } else if (userExists.level === 2) {
+    levelMaxAmount = 100;
+  }
+
+  if (Number(target_amount) > levelMaxAmount) {
+    return res.status(400).json({
+      error: `Il tuo livello (${userExists.level}) consente richieste fino a ${levelMaxAmount}€`
+    });
+  }
+
+  const { data: existingActiveRequest, error: activeRequestError } = await supabase
+    .from('requests')
+    .select('*')
+    .eq('user_id', user_id)
+    .in('status', ['pending', 'approved'])
+    .limit(1);
+
+  if (activeRequestError) {
+    return res.status(500).json({ error: activeRequestError.message });
+  }
+
+  if (existingActiveRequest && existingActiveRequest.length > 0) {
+    return res.status(400).json({
+      error: 'Hai già una richiesta attiva o in attesa di approvazione'
+    });
+  }
+
   const { data, error } = await supabase
     .from('requests')
     .insert([
