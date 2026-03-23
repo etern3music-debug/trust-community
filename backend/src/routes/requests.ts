@@ -48,6 +48,12 @@ async function createRequest(req, res) {
     });
   }
 
+  if (userExists.status !== 'verified') {
+    return res.status(403).json({
+      error: 'Solo gli utenti verificati possono creare richieste'
+    });
+  }
+
   const { data, error } = await supabase
     .from('requests')
     .insert([
@@ -100,30 +106,56 @@ ${progress.bar}`;
   return res.json(data);
 }
 
-// PRENDE TUTTE LE REQUEST + BARRA
+// PRENDE TUTTE LE REQUEST + BARRA + PAYMENT LINK
 async function getRequests(req, res) {
   const { data, error } = await supabase
     .from('requests')
-    .select('*');
+    .select(`
+      id,
+      title,
+      description,
+      target_amount,
+      current_amount,
+      user_id,
+      telegram_message_id,
+      users (
+        id,
+        username,
+        display_name,
+        payment_link
+      )
+    `)
+    .order('id', { ascending: false });
 
   if (error) {
     return res.status(500).json({ error: error.message });
   }
 
-  const enriched = data.map((request) => {
+  const formatted = data.map((request) => {
     const progress = buildProgressBar(
       request.current_amount || 0,
       request.target_amount || 0
     );
 
     return {
-      ...request,
+      id: request.id,
+      user_id: request.user_id,
+      title: request.title,
+      description: request.description,
+      target_amount: request.target_amount,
+      current_amount: request.current_amount,
+      telegram_message_id: request.telegram_message_id,
+
       progress_percent: progress.percent,
       progress_bar: progress.bar,
+
+      creator_name: request.users?.display_name || 'Utente',
+      creator_username: request.users?.username || null,
+      payment_link: request.users?.payment_link || null
     };
   });
 
-  return res.json(enriched);
+  return res.json(formatted);
 }
 
 module.exports = { createRequest, getRequests };
