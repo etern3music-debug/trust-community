@@ -24,7 +24,7 @@ bot.onText(/\/start/, (msg) => {
 bot.onText(/\/help/, async (msg) => {
   const chatId = msg.chat.id;
 
-  const text =
+  let text =
 `📘 Comandi disponibili
 
 /start → avvia il bot
@@ -33,9 +33,6 @@ bot.onText(/\/help/, async (msg) => {
 /profilo → mostra il tuo profilo
 /richieste → mostra le richieste attive
 /mie_richieste → mostra le richieste create da te
-/pending_requests → lista richieste da approvare
-/approve_request ID → approva richiesta
-/reject_request ID → rifiuta richiesta
 
 /crearichiesta titolo | descrizione | importo
 Esempio:
@@ -44,6 +41,20 @@ Esempio:
 /dona request_id importo
 Esempio:
 /dona 3 5`;
+
+  if (isAdmin(msg)) {
+    text += `
+
+🔐 Comandi admin
+
+/pending_users → lista utenti da approvare
+/approve_user ID → approva utente
+/ban_user ID → banna utente
+
+/pending_requests → lista richieste da approvare
+/approve_request ID → approva richiesta
+/reject_request ID → rifiuta richiesta`;
+  }
 
   await bot.sendMessage(chatId, text);
 });

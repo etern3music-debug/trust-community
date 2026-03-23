@@ -38,10 +38,13 @@ const BACKEND_URL = 'https://trust-community-production-d22c.up.railway.app';
 
 export default function HomePage() {
   const [requests, setRequests] = useState<RequestItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [amounts, setAmounts] = useState<Record<number, string>>({});
+  const [loadingRequests, setLoadingRequests] = useState(true);
+
   const [me, setMe] = useState<MeData | null>(null);
+  const [telegramAvailable, setTelegramAvailable] = useState(false);
   const [paymentLink, setPaymentLink] = useState('');
+
+  const [amounts, setAmounts] = useState<Record<number, string>>({});
 
   const [requestTitle, setRequestTitle] = useState('');
   const [requestDescription, setRequestDescription] = useState('');
@@ -56,7 +59,7 @@ export default function HomePage() {
       console.error('Errore caricamento richieste:', error);
       setRequests([]);
     } finally {
-      setLoading(false);
+      setLoadingRequests(false);
     }
   }
 
@@ -75,8 +78,7 @@ export default function HomePage() {
   }
 
   function getAmountForRequest(requestId: number) {
-    const raw = amounts[requestId];
-    return Number(raw);
+    return Number(amounts[requestId]);
   }
 
   function handleAmountChange(requestId: number, value: string) {
@@ -121,7 +123,7 @@ export default function HomePage() {
       const telegramUserId = tg?.initDataUnsafe?.user?.id;
 
       if (!telegramUserId) {
-        alert('Errore: utente Telegram non trovato');
+        alert('Apri la Mini App dentro Telegram per confermare il pagamento');
         return;
       }
 
@@ -142,8 +144,8 @@ export default function HomePage() {
         body: JSON.stringify({
           request_id: requestId,
           donor_user_id: user.id,
-          amount: amount,
-        }),
+          amount
+        })
       });
 
       const data = await res.json();
@@ -153,7 +155,7 @@ export default function HomePage() {
         return;
       }
 
-      alert(data.message || `Donazione registrata: ${data.actual_donated_amount}€`);
+      alert(data.message || 'Pagamento segnalato con successo');
       await loadRequests();
       await loadMe(telegramUserId);
     } catch (error) {
@@ -168,7 +170,7 @@ export default function HomePage() {
       const telegramUserId = tg?.initDataUnsafe?.user?.id;
 
       if (!telegramUserId) {
-        alert('Utente Telegram non trovato');
+        alert('Apri la Mini App dentro Telegram per salvare il payment link');
         return;
       }
 
@@ -178,7 +180,7 @@ export default function HomePage() {
         body: JSON.stringify({
           telegram_user_id: telegramUserId,
           payment_link: paymentLink
-        }),
+        })
       });
 
       const data = await res.json();
@@ -203,7 +205,7 @@ export default function HomePage() {
       const telegramUserId = tg?.initDataUnsafe?.user?.id;
 
       if (!telegramUserId) {
-        alert('Utente Telegram non trovato');
+        alert('Apri la Mini App dentro Telegram per creare richieste');
         return;
       }
 
@@ -231,7 +233,7 @@ export default function HomePage() {
           title: requestTitle,
           description: requestDescription,
           target_amount: Number(requestTarget)
-        }),
+        })
       });
 
       const data = await res.json();
@@ -256,38 +258,39 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    async function initTelegramUser() {
+    async function init() {
       try {
         const tg = (window as any).Telegram?.WebApp;
-        if (tg) {
+        const telegramUser = tg?.initDataUnsafe?.user;
+
+        if (tg && telegramUser?.id) {
+          setTelegramAvailable(true);
           tg.ready();
           tg.expand();
 
-          const telegramUser = tg?.initDataUnsafe?.user;
+          await fetch(`${BACKEND_URL}/api/users/ensure`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              telegram_user_id: telegramUser.id,
+              username: telegramUser.username || null,
+              display_name: telegramUser.first_name || 'Nuovo utente'
+            })
+          });
 
-          if (telegramUser?.id) {
-            await fetch(`${BACKEND_URL}/api/users/ensure`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                telegram_user_id: telegramUser.id,
-                username: telegramUser.username || null,
-                display_name: telegramUser.first_name || 'Nuovo utente'
-              }),
-            });
-
-            await loadMe(telegramUser.id);
-          }
+          await loadMe(telegramUser.id);
+        } else {
+          setTelegramAvailable(false);
         }
 
         await loadRequests();
       } catch (error) {
-        console.error('Errore init utente Telegram:', error);
+        console.error('Errore init Mini App:', error);
         await loadRequests();
       }
     }
 
-    initTelegramUser();
+    init();
   }, []);
 
   return (
@@ -295,7 +298,9 @@ export default function HomePage() {
       <section className="border rounded-xl p-4 shadow-sm">
         <h1 className="text-2xl font-bold mb-4">Profilo</h1>
 
-        {!me ? (
+        {!telegramAvailable ? (
+          <p>Apri la Mini App dentro Telegram per vedere il tuo profilo.</p>
+        ) : !me ? (
           <p>Caricamento profilo...</p>
         ) : (
           <div className="space-y-2">
@@ -367,7 +372,7 @@ export default function HomePage() {
       <section>
         <h1 className="text-2xl font-bold mb-6">Richieste attive</h1>
 
-        {loading ? (
+        {loadingRequests ? (
           <p>Caricamento...</p>
         ) : requests.length === 0 ? (
           <p>Nessuna richiesta trovata.</p>
