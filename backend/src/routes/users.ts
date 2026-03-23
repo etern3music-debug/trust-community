@@ -78,4 +78,37 @@ async function ensureUser(req, res) {
   return res.json(newUsers[0]);
 }
 
-module.exports = { createUser, getUserByTelegramId, ensureUser };
+async function updatePaymentLink(req, res) {
+  const { telegram_user_id, payment_link } = req.body;
+
+  if (!telegram_user_id) {
+    return res.status(400).json({ error: 'telegram_user_id obbligatorio' });
+  }
+
+  const { data: user, error: userError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('telegram_user_id', telegram_user_id)
+    .single();
+
+  if (userError || !user) {
+    return res.status(404).json({ error: 'Utente non trovato' });
+  }
+
+  const { data, error } = await supabase
+    .from('users')
+    .update({
+      payment_link: payment_link || null
+    })
+    .eq('telegram_user_id', telegram_user_id)
+    .select()
+    .single();
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  return res.json(data);
+}
+
+module.exports = { createUser, getUserByTelegramId, ensureUser, updatePaymentLink };

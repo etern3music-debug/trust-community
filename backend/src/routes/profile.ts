@@ -129,8 +129,65 @@ async function getMyRequestsByTelegramId(req, res) {
   return res.json(enriched);
 }
 
+async function getMeByTelegramId(req, res) {
+  const telegramUserId = req.params.telegramId;
+
+  const { data: user, error: userError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('telegram_user_id', telegramUserId)
+    .single();
+
+  if (userError || !user) {
+    return res.status(404).json({ error: 'Utente non trovato' });
+  }
+
+  const { data: badges, error: badgesError } = await supabase
+    .from('badges')
+    .select('*')
+    .eq('user_id', user.id);
+
+  if (badgesError) {
+    return res.status(500).json({ error: badgesError.message });
+  }
+
+  const { data: donations, error: donationsError } = await supabase
+    .from('donations')
+    .select('*')
+    .eq('donor_user_id', user.id);
+
+  if (donationsError) {
+    return res.status(500).json({ error: donationsError.message });
+  }
+
+  const { data: requests, error: requestsError } = await supabase
+    .from('requests')
+    .select('*')
+    .eq('user_id', user.id);
+
+  if (requestsError) {
+    return res.status(500).json({ error: requestsError.message });
+  }
+
+  const totalDonated = donations.reduce((sum, donation) => {
+    return sum + (donation.amount || 0);
+  }, 0);
+
+  return res.json({
+    user,
+    stats: {
+      total_badges: badges.length,
+      total_donations: donations.length,
+      total_donated_amount: totalDonated,
+      total_requests: requests.length
+    },
+    badges
+  });
+}
+
 module.exports = {
   getProfile,
   getProfileByTelegramId,
-  getMyRequestsByTelegramId
+  getMyRequestsByTelegramId,
+  getMeByTelegramId
 };
