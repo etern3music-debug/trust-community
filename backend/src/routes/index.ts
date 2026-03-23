@@ -17,7 +17,7 @@ const {
   approveRequest,
   rejectRequest
 } = require('./requests');
-const { createDonation, getDonations } = require('./donations');
+const { createDonation, confirmDonationReceipt, getDonations } = require('./donations');
 const {
   getProfile,
   getProfileByTelegramId,
@@ -44,6 +44,7 @@ router.post('/requests/approve', approveRequest);
 router.post('/requests/reject', rejectRequest);
 
 router.post('/donations', createDonation);
+router.post('/donations/confirm-receipt', confirmDonationReceipt);
 router.get('/donations', getDonations);
 
 router.get('/profile/:id', getProfile);

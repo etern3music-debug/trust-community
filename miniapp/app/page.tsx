@@ -2,216 +2,422 @@
 
 import { useEffect, useState } from 'react';
 
+type RequestItem = {
+  id: number;
+  title: string;
+  description: string | null;
+  target_amount: number;
+  current_amount: number;
+  progress_percent: number;
+  progress_bar: string;
+  creator_name: string;
+  creator_username: string | null;
+  payment_link: string | null;
+};
+
+type MeData = {
+  user: {
+    id: number;
+    display_name: string;
+    username: string | null;
+    status: string;
+    score: number;
+    level: number;
+    payment_link: string | null;
+  };
+  stats: {
+    total_badges: number;
+    total_donations: number;
+    total_donated_amount: number;
+    total_requests: number;
+  };
+  badges: { badge: string }[];
+};
+
 const BACKEND_URL = 'https://trust-community-production-d22c.up.railway.app';
 
 export default function HomePage() {
-  const [me, setMe] = useState<any>(null);
-  const [requests, setRequests] = useState<any[]>([]);
+  const [requests, setRequests] = useState<RequestItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [amounts, setAmounts] = useState<Record<number, string>>({});
+  const [me, setMe] = useState<MeData | null>(null);
   const [paymentLink, setPaymentLink] = useState('');
-  const [amounts, setAmounts] = useState<any>({});
+
+  const [requestTitle, setRequestTitle] = useState('');
+  const [requestDescription, setRequestDescription] = useState('');
+  const [requestTarget, setRequestTarget] = useState('');
 
   async function loadRequests() {
-    const res = await fetch(`${BACKEND_URL}/api/requests`);
-    const data = await res.json();
-    setRequests(data);
-  }
-
-  async function loadMe(telegramId: number) {
-    const res = await fetch(`${BACKEND_URL}/api/me/${telegramId}`);
-    const data = await res.json();
-
-    if (res.ok) {
-      setMe(data);
-      setPaymentLink(data.user.payment_link || '');
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/requests`);
+      const data = await res.json();
+      setRequests(data);
+    } catch (error) {
+      console.error('Errore caricamento richieste:', error);
+      setRequests([]);
+    } finally {
+      setLoading(false);
     }
   }
 
-  function handleAmountChange(id: number, value: string) {
-    setAmounts((prev: any) => ({
+  async function loadMe(telegramUserId: number) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/me/${telegramUserId}`);
+      const data = await res.json();
+
+      if (res.ok) {
+        setMe(data);
+        setPaymentLink(data.user.payment_link || '');
+      }
+    } catch (error) {
+      console.error('Errore caricamento profilo:', error);
+    }
+  }
+
+  function getAmountForRequest(requestId: number) {
+    const raw = amounts[requestId];
+    return Number(raw);
+  }
+
+  function handleAmountChange(requestId: number, value: string) {
+    setAmounts((prev) => ({
       ...prev,
-      [id]: value
+      [requestId]: value
     }));
   }
 
-  function handlePay(request: any) {
-    const amount = Number(amounts[request.id]);
+  function handlePay(request: RequestItem) {
+    const amount = getAmountForRequest(request.id);
 
     if (!amount || amount <= 0) {
-      alert('Inserisci importo valido');
+      alert('Inserisci un importo valido');
       return;
     }
 
     if (!request.payment_link) {
-      alert('Pagamento non disponibile');
+      alert('Metodo di pagamento non disponibile');
       return;
     }
 
-    let url = request.payment_link;
+    let paymentUrl = request.payment_link;
 
-    if (url.includes('paypal.me')) {
-      url = `${url.replace(/\/$/, '')}/${amount}`;
+    if (paymentUrl.includes('paypal.me')) {
+      paymentUrl = `${paymentUrl.replace(/\/$/, '')}/${amount}`;
     }
 
-    window.open(url, '_blank');
+    window.open(paymentUrl, '_blank');
   }
 
   async function handleConfirm(requestId: number) {
-    const amount = Number(amounts[requestId]);
+    try {
+      const amount = getAmountForRequest(requestId);
 
-    if (!amount || amount <= 0) {
-      alert('Inserisci importo valido');
-      return;
+      if (!amount || amount <= 0) {
+        alert('Inserisci un importo valido prima di confermare');
+        return;
+      }
+
+      const tg = (window as any).Telegram?.WebApp;
+      const telegramUserId = tg?.initDataUnsafe?.user?.id;
+
+      if (!telegramUserId) {
+        alert('Errore: utente Telegram non trovato');
+        return;
+      }
+
+      const userRes = await fetch(
+        `${BACKEND_URL}/api/users/by-telegram/${telegramUserId}`
+      );
+
+      const user = await userRes.json();
+
+      if (!userRes.ok) {
+        alert('Utente non registrato nel sistema');
+        return;
+      }
+
+      const res = await fetch(`${BACKEND_URL}/api/donations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          request_id: requestId,
+          donor_user_id: user.id,
+          amount: amount,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || 'Errore nella registrazione della donazione');
+        return;
+      }
+
+      alert(data.message || `Donazione registrata: ${data.actual_donated_amount}€`);
+      await loadRequests();
+      await loadMe(telegramUserId);
+    } catch (error) {
+      console.error(error);
+      alert('Errore nella donazione');
     }
-
-    const tg = (window as any).Telegram?.WebApp;
-    const telegramUserId = tg?.initDataUnsafe?.user?.id;
-
-    const userRes = await fetch(`${BACKEND_URL}/api/users/by-telegram/${telegramUserId}`);
-    const user = await userRes.json();
-
-    const res = await fetch(`${BACKEND_URL}/api/donations`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        request_id: requestId,
-        donor_user_id: user.id,
-        amount
-      })
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      alert(data.error);
-      return;
-    }
-
-    alert('Donazione registrata');
-
-    await loadRequests();
-    await loadMe(telegramUserId);
   }
 
-  async function savePaymentLink() {
-    const tg = (window as any).Telegram?.WebApp;
-    const telegramUserId = tg?.initDataUnsafe?.user?.id;
+  async function handleSavePaymentLink() {
+    try {
+      const tg = (window as any).Telegram?.WebApp;
+      const telegramUserId = tg?.initDataUnsafe?.user?.id;
 
-    const res = await fetch(`${BACKEND_URL}/api/users/payment-link`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        telegram_user_id: telegramUserId,
-        payment_link: paymentLink
-      })
-    });
+      if (!telegramUserId) {
+        alert('Utente Telegram non trovato');
+        return;
+      }
 
-    const data = await res.json();
+      const res = await fetch(`${BACKEND_URL}/api/users/payment-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          telegram_user_id: telegramUserId,
+          payment_link: paymentLink
+        }),
+      });
 
-    if (!res.ok) {
-      alert(data.error);
-      return;
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || 'Errore salvataggio payment link');
+        return;
+      }
+
+      alert('Payment link salvato!');
+      await loadMe(telegramUserId);
+      await loadRequests();
+    } catch (error) {
+      console.error(error);
+      alert('Errore salvataggio payment link');
     }
+  }
 
-    alert('Salvato');
-    await loadMe(telegramUserId);
+  async function handleCreateRequest() {
+    try {
+      const tg = (window as any).Telegram?.WebApp;
+      const telegramUserId = tg?.initDataUnsafe?.user?.id;
+
+      if (!telegramUserId) {
+        alert('Utente Telegram non trovato');
+        return;
+      }
+
+      if (!requestTitle || !requestTarget) {
+        alert('Titolo e importo target sono obbligatori');
+        return;
+      }
+
+      const userRes = await fetch(
+        `${BACKEND_URL}/api/users/by-telegram/${telegramUserId}`
+      );
+
+      const user = await userRes.json();
+
+      if (!userRes.ok) {
+        alert('Utente non registrato');
+        return;
+      }
+
+      const res = await fetch(`${BACKEND_URL}/api/requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          title: requestTitle,
+          description: requestDescription,
+          target_amount: Number(requestTarget)
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || 'Errore creazione richiesta');
+        return;
+      }
+
+      alert('Richiesta inviata! In attesa di approvazione admin.');
+
+      setRequestTitle('');
+      setRequestDescription('');
+      setRequestTarget('');
+
+      await loadMe(telegramUserId);
+      await loadRequests();
+    } catch (error) {
+      console.error(error);
+      alert('Errore creazione richiesta');
+    }
   }
 
   useEffect(() => {
-    async function init() {
-      const tg = (window as any).Telegram?.WebApp;
-      const user = tg?.initDataUnsafe?.user;
+    async function initTelegramUser() {
+      try {
+        const tg = (window as any).Telegram?.WebApp;
+        if (tg) {
+          tg.ready();
+          tg.expand();
 
-      if (user?.id) {
-        await fetch(`${BACKEND_URL}/api/users/ensure`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            telegram_user_id: user.id,
-            username: user.username,
-            display_name: user.first_name
-          })
-        });
+          const telegramUser = tg?.initDataUnsafe?.user;
 
-        await loadMe(user.id);
+          if (telegramUser?.id) {
+            await fetch(`${BACKEND_URL}/api/users/ensure`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                telegram_user_id: telegramUser.id,
+                username: telegramUser.username || null,
+                display_name: telegramUser.first_name || 'Nuovo utente'
+              }),
+            });
+
+            await loadMe(telegramUser.id);
+          }
+        }
+
+        await loadRequests();
+      } catch (error) {
+        console.error('Errore init utente Telegram:', error);
+        await loadRequests();
       }
-
-      await loadRequests();
     }
 
-    init();
+    initTelegramUser();
   }, []);
 
   return (
     <main className="p-6 space-y-6">
-
-      {/* PROFILO */}
-      <div className="border p-4 rounded">
-        <h2 className="text-xl font-bold mb-3">Profilo</h2>
+      <section className="border rounded-xl p-4 shadow-sm">
+        <h1 className="text-2xl font-bold mb-4">Profilo</h1>
 
         {!me ? (
-          <p>Caricamento...</p>
+          <p>Caricamento profilo...</p>
         ) : (
-          <>
-            <p>Nome: {me.user.display_name}</p>
-            <p>Stato: {me.user.status}</p>
-            <p>Score: {me.user.score}</p>
-            <p>Livello: {me.user.level}</p>
-            <p>Donato: {me.stats.total_donated_amount}€</p>
+          <div className="space-y-2">
+            <p><strong>Nome:</strong> {me.user.display_name}</p>
+            <p><strong>Username:</strong> {me.user.username || 'N/A'}</p>
+            <p><strong>Stato:</strong> {me.user.status}</p>
+            <p><strong>Score:</strong> {me.user.score}</p>
+            <p><strong>Livello:</strong> {me.user.level}</p>
+            <p><strong>Badge:</strong> {me.badges.map((b) => b.badge).join(', ') || 'Nessuno'}</p>
+            <p><strong>Totale donato:</strong> {me.stats.total_donated_amount}€</p>
+            <p><strong>Richieste create:</strong> {me.stats.total_requests}</p>
 
-            <input
-              className="mt-3 border p-2 w-full"
-              placeholder="https://paypal.me/tuonome"
-              value={paymentLink}
-              onChange={(e) => setPaymentLink(e.target.value)}
-            />
-
-            <button
-              className="mt-2 bg-black text-white px-4 py-2"
-              onClick={savePaymentLink}
-            >
-              Salva link pagamento
-            </button>
-          </>
-        )}
-      </div>
-
-      {/* REQUESTS */}
-      <div>
-        <h2 className="text-xl font-bold mb-3">Richieste</h2>
-
-        {requests.map((r) => (
-          <div key={r.id} className="border p-4 mb-3 rounded">
-            <h3>{r.title}</h3>
-            <p>{r.description}</p>
-
-            <p>{r.current_amount}€ / {r.target_amount}€</p>
-            <p>{r.progress_bar}</p>
-
-            <input
-              className="mt-2 border p-2 w-full"
-              placeholder="Importo"
-              onChange={(e) => handleAmountChange(r.id, e.target.value)}
-            />
-
-            <div className="flex gap-2 mt-2">
+            <div className="pt-3">
+              <label className="block mb-2 font-medium">Payment link</label>
+              <input
+                type="text"
+                value={paymentLink}
+                onChange={(e) => setPaymentLink(e.target.value)}
+                placeholder="https://paypal.me/tuonome"
+                className="border rounded px-3 py-2 w-full"
+              />
               <button
-                className="bg-green-600 text-white px-3 py-2"
-                onClick={() => handlePay(r)}
+                className="mt-3 bg-black text-white px-4 py-2 rounded"
+                onClick={handleSavePaymentLink}
               >
-                Paga
-              </button>
-
-              <button
-                className="bg-blue-600 text-white px-3 py-2"
-                onClick={() => handleConfirm(r.id)}
-              >
-                Ho pagato
+                Salva payment link
               </button>
             </div>
           </div>
-        ))}
-      </div>
+        )}
+      </section>
 
+      <section className="border rounded-xl p-4 shadow-sm">
+        <h1 className="text-2xl font-bold mb-4">Crea richiesta</h1>
+
+        <input
+          type="text"
+          value={requestTitle}
+          onChange={(e) => setRequestTitle(e.target.value)}
+          placeholder="Titolo richiesta"
+          className="border rounded px-3 py-2 w-full mb-3"
+        />
+
+        <textarea
+          value={requestDescription}
+          onChange={(e) => setRequestDescription(e.target.value)}
+          placeholder="Descrizione"
+          className="border rounded px-3 py-2 w-full mb-3"
+        />
+
+        <input
+          type="number"
+          min="1"
+          step="1"
+          value={requestTarget}
+          onChange={(e) => setRequestTarget(e.target.value)}
+          placeholder="Importo target"
+          className="border rounded px-3 py-2 w-full mb-3"
+        />
+
+        <button
+          className="bg-purple-600 text-white px-4 py-2 rounded"
+          onClick={handleCreateRequest}
+        >
+          Invia richiesta
+        </button>
+      </section>
+
+      <section>
+        <h1 className="text-2xl font-bold mb-6">Richieste attive</h1>
+
+        {loading ? (
+          <p>Caricamento...</p>
+        ) : requests.length === 0 ? (
+          <p>Nessuna richiesta trovata.</p>
+        ) : (
+          <div className="space-y-4">
+            {requests.map((request) => (
+              <div key={request.id} className="border rounded-xl p-4 shadow-sm">
+                <h2 className="text-lg font-semibold">{request.title}</h2>
+                <p className="text-sm text-gray-600 mb-2">
+                  {request.description || 'Nessuna descrizione'}
+                </p>
+                <p className="text-sm mb-2">
+                  Creatore: {request.creator_name}
+                </p>
+                <p className="font-medium">
+                  {request.current_amount}€ / {request.target_amount}€
+                </p>
+                <p>{request.progress_percent}%</p>
+                <p className="font-mono">{request.progress_bar}</p>
+
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="Importo"
+                  value={amounts[request.id] || ''}
+                  onChange={(e) => handleAmountChange(request.id, e.target.value)}
+                  className="mt-3 border rounded px-3 py-2 w-full"
+                />
+
+                <div className="mt-3 flex gap-2">
+                  <button
+                    className="bg-green-600 text-white px-4 py-2 rounded"
+                    onClick={() => handlePay(request)}
+                  >
+                    Paga
+                  </button>
+
+                  <button
+                    className="bg-blue-600 text-white px-4 py-2 rounded"
+                    onClick={() => handleConfirm(request.id)}
+                  >
+                    Ho pagato
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </main>
   );
 }

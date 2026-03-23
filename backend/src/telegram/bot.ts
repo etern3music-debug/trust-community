@@ -473,6 +473,37 @@ Stato: ${request.status}`
   }
 });
 
+// /confirm_receipt
+bot.onText(/\/confirm_receipt (\d+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const telegramUserId = msg.from.id;
+
+  try {
+    const donationId = Number(match[1]);
+
+    const res = await axios.post(`${BACKEND_URL}/api/donations/confirm-receipt`, {
+      donation_id: donationId,
+      receiver_telegram_user_id: telegramUserId
+    });
+
+    const result = res.data;
+
+    await bot.sendMessage(
+      chatId,
+      `✅ Ricezione confermata
+
+Donation ID: ${result.donation_id}
+Importo: ${result.confirmed_amount}€
+Nuovo totale richiesta: ${result.updated_current_amount}€`
+    );
+  } catch (error) {
+    const backendMessage =
+      error.response?.data?.error || 'Errore nella conferma ricezione';
+
+    await bot.sendMessage(chatId, `❌ ${backendMessage}`);
+  }
+});
+
 console.log('🤖 Bot Telegram avviato');
 
 module.exports = { bot };

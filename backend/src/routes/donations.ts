@@ -1,5 +1,6 @@
 const { supabase } = require('../config/supabase');
 const { editTelegramMessage } = require('../telegram/editMessage');
+const { sendTelegramDirectMessage } = require('../telegram/sendMessage');
 
 function calculateLevel(score) {
   if (score >= 100) return 4;
@@ -38,6 +39,7 @@ async function ensureBadge(userId, badgeName) {
   if (insertError) throw new Error(insertError.message);
 }
 
+// 1) DONATORE REGISTRA "HO PAGATO"
 async function createDonation(req, res) {
   const { request_id, donor_user_id, amount } = req.body;
 
@@ -94,6 +96,17 @@ async function createDonation(req, res) {
     return res.status(404).json({ error: 'Donatore non trovato' });
   }
 
+  const { data: receiverData, error: receiverError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', requestData.user_id)
+    .single();
+
+  if (receiverError || !receiverData) {
+    return res.status(404).json({ error: 'Ricevente non trovato' });
+  }
+
+  // crea donation ma NON aggiorna ancora request/score
   const { data: donationData, error: donationError } = await supabase
     .from('donations')
     .insert([
@@ -101,25 +114,127 @@ async function createDonation(req, res) {
         request_id,
         donor_user_id,
         amount: safeDonationAmount,
+        status: 'pending_receiver_confirmation'
       },
     ])
-    .select();
+    .select()
+    .single();
 
   if (donationError) {
     return res.status(500).json({ error: donationError.message });
   }
 
-  const newAmount = (requestData.current_amount || 0) + safeDonationAmount;
+  // notifica il ricevente
+  try {
+    if (receiverData.telegram_user_id) {
+      await sendTelegramDirectMessage(
+        receiverData.telegram_user_id,
+        `💸 Un utente ha dichiarato di averti inviato un pagamento.
+
+Donation ID: ${donationData.id}
+Importo: ${safeDonationAmount}€
+Richiesta: ${requestData.title}
+
+Se hai ricevuto davvero il pagamento, usa:
+ /confirm_receipt ${donationData.id}`
+      );
+    }
+  } catch (telegramError) {
+    console.error(
+      'Errore notifica ricevente:',
+      telegramError.response?.data || telegramError.message
+    );
+  }
+
+  return res.json({
+    donation: donationData,
+    actual_donated_amount: safeDonationAmount,
+    status: donationData.status,
+    message: 'Pagamento segnalato. In attesa di conferma del ricevente.'
+  });
+}
+
+// 2) RICEVENTE CONFERMA E SOLO QUI SI CHIUDE DAVVERO
+async function confirmDonationReceipt(req, res) {
+  const { donation_id, receiver_telegram_user_id } = req.body;
+
+  if (!donation_id || !receiver_telegram_user_id) {
+    return res.status(400).json({
+      error: 'donation_id e receiver_telegram_user_id obbligatori'
+    });
+  }
+
+  const { data: donationData, error: donationError } = await supabase
+    .from('donations')
+    .select('*')
+    .eq('id', donation_id)
+    .single();
+
+  if (donationError || !donationData) {
+    return res.status(404).json({ error: 'Donation non trovata' });
+  }
+
+  if (donationData.status === 'confirmed') {
+    return res.status(400).json({ error: 'Donation già confermata' });
+  }
+
+  const { data: requestData, error: requestError } = await supabase
+    .from('requests')
+    .select('*')
+    .eq('id', donationData.request_id)
+    .single();
+
+  if (requestError || !requestData) {
+    return res.status(404).json({ error: 'Richiesta non trovata' });
+  }
+
+  const { data: receiverData, error: receiverError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', requestData.user_id)
+    .single();
+
+  if (receiverError || !receiverData) {
+    return res.status(404).json({ error: 'Ricevente non trovato' });
+  }
+
+  if (String(receiverData.telegram_user_id) !== String(receiver_telegram_user_id)) {
+    return res.status(403).json({ error: 'Solo il ricevente può confermare questa donation' });
+  }
+
+  const { data: donorData, error: donorError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', donationData.donor_user_id)
+    .single();
+
+  if (donorError || !donorData) {
+    return res.status(404).json({ error: 'Donatore non trovato' });
+  }
+
+  // conferma donation
+  const { error: confirmError } = await supabase
+    .from('donations')
+    .update({ status: 'confirmed' })
+    .eq('id', donation_id);
+
+  if (confirmError) {
+    return res.status(500).json({ error: confirmError.message });
+  }
+
+  // aggiorna request
+  const newAmount = (requestData.current_amount || 0) + donationData.amount;
 
   const { error: updateRequestError } = await supabase
     .from('requests')
     .update({ current_amount: newAmount })
-    .eq('id', request_id);
+    .eq('id', requestData.id);
 
   if (updateRequestError) {
     return res.status(500).json({ error: updateRequestError.message });
   }
 
+  // aggiorna score/livello donatore
   const newScore = (donorData.score || 0) + 5;
   const newLevel = calculateLevel(newScore);
 
@@ -129,20 +244,21 @@ async function createDonation(req, res) {
       score: newScore,
       level: newLevel
     })
-    .eq('id', donor_user_id);
+    .eq('id', donorData.id);
 
   if (updateUserError) {
     return res.status(500).json({ error: updateUserError.message });
   }
 
   try {
-    await ensureBadge(donor_user_id, 'contributor');
-    if (newLevel >= 2) await ensureBadge(donor_user_id, 'trusted_plus');
-    if (newLevel >= 4) await ensureBadge(donor_user_id, 'elite');
+    await ensureBadge(donorData.id, 'contributor');
+    if (newLevel >= 2) await ensureBadge(donorData.id, 'trusted_plus');
+    if (newLevel >= 4) await ensureBadge(donorData.id, 'elite');
   } catch (badgeError) {
     return res.status(500).json({ error: badgeError.message });
   }
 
+  // aggiorna messaggio canale
   try {
     const progress = buildProgressBar(newAmount, requestData.target_amount || 0);
 
@@ -166,22 +282,37 @@ ${progress.bar}`;
     );
   }
 
-  const { data: badgesData, error: badgesError } = await supabase
-    .from('badges')
-    .select('*')
-    .eq('user_id', donor_user_id);
+  // notifica donatore
+  try {
+    if (donorData.telegram_user_id) {
+      await sendTelegramDirectMessage(
+        donorData.telegram_user_id,
+        `✅ Il ricevente ha confermato la tua donation.
 
-  if (badgesError) {
-    return res.status(500).json({ error: badgesError.message });
+Donation ID: ${donation_id}
+Importo confermato: ${donationData.amount}€`
+      );
+    }
+  } catch (telegramError) {
+    console.error(
+      'Errore notifica donatore:',
+      telegramError.response?.data || telegramError.message
+    );
   }
 
+  const { data: badgesData } = await supabase
+    .from('badges')
+    .select('*')
+    .eq('user_id', donorData.id);
+
   return res.json({
-    donation: donationData,
-    actual_donated_amount: safeDonationAmount,
+    message: 'Donation confermata con successo',
+    donation_id,
+    confirmed_amount: donationData.amount,
     updated_current_amount: newAmount,
     donor_new_score: newScore,
     donor_new_level: newLevel,
-    donor_badges: badgesData
+    donor_badges: badgesData || []
   });
 }
 
@@ -197,4 +328,8 @@ async function getDonations(req, res) {
   return res.json(data);
 }
 
-module.exports = { createDonation, getDonations };
+module.exports = {
+  createDonation,
+  confirmDonationReceipt,
+  getDonations
+};
