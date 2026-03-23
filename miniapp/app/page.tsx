@@ -20,6 +20,7 @@ const BACKEND_URL = 'https://trust-community-production-d22c.up.railway.app';
 export default function HomePage() {
   const [requests, setRequests] = useState<RequestItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [amounts, setAmounts] = useState<Record<number, string>>({});
 
   async function loadRequests() {
     try {
@@ -34,17 +35,51 @@ export default function HomePage() {
     }
   }
 
+  function getAmountForRequest(requestId: number) {
+    const raw = amounts[requestId];
+    const parsed = Number(raw);
+    return parsed;
+  }
+
+  function handleAmountChange(requestId: number, value: string) {
+    setAmounts((prev) => ({
+      ...prev,
+      [requestId]: value
+    }));
+  }
+
   function handlePay(request: RequestItem) {
+    const amount = getAmountForRequest(request.id);
+
+    if (!amount || amount <= 0) {
+      alert('Inserisci un importo valido');
+      return;
+    }
+
     if (!request.payment_link) {
       alert('Metodo di pagamento non disponibile');
       return;
     }
 
-    window.open(request.payment_link, '_blank');
+    let paymentUrl = request.payment_link;
+
+    // Se è un PayPal.Me standard, aggiungiamo l'importo in coda
+    if (paymentUrl.includes('paypal.me')) {
+      paymentUrl = `${paymentUrl.replace(/\/$/, '')}/${amount}`;
+    }
+
+    window.open(paymentUrl, '_blank');
   }
 
   async function handleConfirm(requestId: number) {
     try {
+      const amount = getAmountForRequest(requestId);
+
+      if (!amount || amount <= 0) {
+        alert('Inserisci un importo valido prima di confermare');
+        return;
+      }
+
       const tg = (window as any).Telegram?.WebApp;
       const telegramUserId = tg?.initDataUnsafe?.user?.id;
 
@@ -70,7 +105,7 @@ export default function HomePage() {
         body: JSON.stringify({
           request_id: requestId,
           donor_user_id: user.id,
-          amount: 5,
+          amount: amount,
         }),
       });
 
@@ -81,7 +116,7 @@ export default function HomePage() {
         return;
       }
 
-      alert('Donazione registrata!');
+      alert(`Donazione registrata: ${data.actual_donated_amount}€`);
       await loadRequests();
     } catch (error) {
       console.error(error);
@@ -147,19 +182,31 @@ export default function HomePage() {
               <p>{request.progress_percent}%</p>
               <p className="font-mono">{request.progress_bar}</p>
 
-              <button
-                className="mt-3 bg-green-600 text-white px-4 py-2 rounded"
-                onClick={() => handlePay(request)}
-              >
-                Paga 5€
-              </button>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                placeholder="Importo"
+                value={amounts[request.id] || ''}
+                onChange={(e) => handleAmountChange(request.id, e.target.value)}
+                className="mt-3 border rounded px-3 py-2 w-full"
+              />
 
-              <button
-                className="mt-2 ml-2 bg-blue-600 text-white px-4 py-2 rounded"
-                onClick={() => handleConfirm(request.id)}
-              >
-                Ho pagato
-              </button>
+              <div className="mt-3 flex gap-2">
+                <button
+                  className="bg-green-600 text-white px-4 py-2 rounded"
+                  onClick={() => handlePay(request)}
+                >
+                  Paga
+                </button>
+
+                <button
+                  className="bg-blue-600 text-white px-4 py-2 rounded"
+                  onClick={() => handleConfirm(request.id)}
+                >
+                  Ho pagato
+                </button>
+              </div>
             </div>
           ))}
         </div>
