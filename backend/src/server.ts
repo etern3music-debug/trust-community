@@ -9,7 +9,10 @@ require('./telegram/bot');
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: '*'
+}));
+
 app.use(express.json());
 
 app.get('/', (req, res) => {
@@ -20,6 +23,6 @@ app.use('/api', router);
 
 const port = process.env.PORT || 3001;
 
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
   console.log(`Server attivo su porta ${port}`);
 });
