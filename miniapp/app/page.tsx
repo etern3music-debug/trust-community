@@ -34,6 +34,16 @@ type MeData = {
   badges: { badge: string }[];
 };
 
+type DonationItem = {
+  id: number;
+  amount: number;
+  status: string;
+  created_at: string;
+  request_id: number;
+  request_title: string;
+  request_description: string | null;
+};
+
 const BACKEND_URL = 'https://trust-community-production-d22c.up.railway.app';
 
 export default function HomePage() {
@@ -45,6 +55,7 @@ export default function HomePage() {
   const [paymentLink, setPaymentLink] = useState('');
 
   const [amounts, setAmounts] = useState<Record<number, string>>({});
+  const [myDonations, setMyDonations] = useState<DonationItem[]>([]);
 
   const [requestTitle, setRequestTitle] = useState('');
   const [requestDescription, setRequestDescription] = useState('');
@@ -74,6 +85,20 @@ export default function HomePage() {
       }
     } catch (error) {
       console.error('Errore caricamento profilo:', error);
+    }
+  }
+
+  async function loadMyDonations(telegramUserId: number) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/my-donations/${telegramUserId}`);
+      const data = await res.json();
+
+      if (res.ok) {
+        setMyDonations(data);
+      }
+    } catch (error) {
+      console.error('Errore caricamento donation:', error);
+      setMyDonations([]);
     }
   }
 
@@ -158,6 +183,7 @@ export default function HomePage() {
       alert(data.message || 'Pagamento segnalato con successo');
       await loadRequests();
       await loadMe(telegramUserId);
+      await loadMyDonations(telegramUserId);
     } catch (error) {
       console.error(error);
       alert('Errore nella donazione');
@@ -279,6 +305,7 @@ export default function HomePage() {
           });
 
           await loadMe(telegramUser.id);
+          await loadMyDonations(telegramUser.id);
         } else {
           setTelegramAvailable(false);
         }
@@ -367,6 +394,34 @@ export default function HomePage() {
         >
           Invia richiesta
         </button>
+      </section>
+
+      <section className="border rounded-xl p-4 shadow-sm">
+        <h1 className="text-2xl font-bold mb-4">Le mie donation</h1>
+
+        {!telegramAvailable ? (
+          <p>Apri la Mini App dentro Telegram per vedere le tue donation.</p>
+        ) : myDonations.length === 0 ? (
+          <p>Nessuna donation registrata.</p>
+        ) : (
+          <div className="space-y-3">
+            {myDonations.map((donation) => (
+              <div key={donation.id} className="border rounded p-3">
+                <p><strong>Donation ID:</strong> {donation.id}</p>
+                <p><strong>Richiesta:</strong> {donation.request_title}</p>
+                <p><strong>Importo:</strong> {donation.amount}€</p>
+                <p>
+                  <strong>Stato:</strong>{' '}
+                  {donation.status === 'pending_receiver_confirmation'
+                    ? 'In attesa conferma ricevente'
+                    : donation.status === 'confirmed'
+                    ? 'Confermata'
+                    : donation.status}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section>

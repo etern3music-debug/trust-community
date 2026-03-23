@@ -22,7 +22,8 @@ const {
   getProfile,
   getProfileByTelegramId,
   getMyRequestsByTelegramId,
-  getMeByTelegramId
+  getMeByTelegramId,
+  getMyDonationsByTelegramId
 } = require('./profile');
 
 const router = express.Router();
@@ -51,5 +52,6 @@ router.get('/profile/:id', getProfile);
 router.get('/profile-by-telegram/:telegramId', getProfileByTelegramId);
 router.get('/my-requests-by-telegram/:telegramId', getMyRequestsByTelegramId);
 router.get('/me/:telegramId', getMeByTelegramId);
+router.get('/my-donations/:telegramId', getMyDonationsByTelegramId);
 
 module.exports = { router };

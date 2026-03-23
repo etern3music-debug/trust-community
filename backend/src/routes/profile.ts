@@ -185,9 +185,57 @@ async function getMeByTelegramId(req, res) {
   });
 }
 
+async function getMyDonationsByTelegramId(req, res) {
+  const telegramUserId = req.params.telegramId;
+
+  const { data: user, error: userError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('telegram_user_id', telegramUserId)
+    .single();
+
+  if (userError || !user) {
+    return res.status(404).json({ error: 'Utente non trovato' });
+  }
+
+  const { data: donations, error: donationsError } = await supabase
+    .from('donations')
+    .select(`
+      id,
+      amount,
+      status,
+      created_at,
+      request_id,
+      requests (
+        id,
+        title,
+        description
+      )
+    `)
+    .eq('donor_user_id', user.id)
+    .order('id', { ascending: false });
+
+  if (donationsError) {
+    return res.status(500).json({ error: donationsError.message });
+  }
+
+  const formatted = donations.map((donation) => ({
+    id: donation.id,
+    amount: donation.amount,
+    status: donation.status,
+    created_at: donation.created_at,
+    request_id: donation.request_id,
+    request_title: donation.requests?.title || 'Richiesta',
+    request_description: donation.requests?.description || null
+  }));
+
+  return res.json(formatted);
+}
+
 module.exports = {
   getProfile,
   getProfileByTelegramId,
   getMyRequestsByTelegramId,
-  getMeByTelegramId
+  getMeByTelegramId,
+  getMyDonationsByTelegramId
 };
