@@ -10,9 +10,10 @@ type RequestItem = {
   current_amount: number;
   progress_percent: number;
   progress_bar: string;
-  creator_name: string;
-  creator_username: string | null;
-  payment_link: string | null;
+  creator_name?: string;
+  creator_username?: string | null;
+  payment_link?: string | null;
+  status?: string;
 };
 
 type MeData = {
@@ -51,6 +52,9 @@ export default function HomePage() {
   const [requests, setRequests] = useState<RequestItem[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
 
+  const [myRequests, setMyRequests] = useState<RequestItem[]>([]);
+  const [loadingMyRequests, setLoadingMyRequests] = useState(true);
+
   const [me, setMe] = useState<MeData | null>(null);
   const [telegramAvailable, setTelegramAvailable] = useState(false);
   const [paymentLink, setPaymentLink] = useState('');
@@ -76,6 +80,24 @@ export default function HomePage() {
       setRequests([]);
     } finally {
       setLoadingRequests(false);
+    }
+  }
+
+  async function loadMyRequests(telegramUserId: number) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/my-requests-by-telegram/${telegramUserId}`);
+      const data = await res.json();
+
+      if (res.ok) {
+        setMyRequests(data);
+      } else {
+        setMyRequests([]);
+      }
+    } catch (error) {
+      console.error('Errore caricamento mie richieste:', error);
+      setMyRequests([]);
+    } finally {
+      setLoadingMyRequests(false);
     }
   }
 
@@ -185,10 +207,7 @@ export default function HomePage() {
         return;
       }
 
-      const userRes = await fetch(
-        `${BACKEND_URL}/api/users/by-telegram/${telegramUserId}`
-      );
-
+      const userRes = await fetch(`${BACKEND_URL}/api/users/by-telegram/${telegramUserId}`);
       const user = await userRes.json();
 
       if (!userRes.ok) {
@@ -217,6 +236,7 @@ export default function HomePage() {
       await loadRequests();
       await loadMe(telegramUserId);
       await loadMyDonations(telegramUserId);
+      await loadMyRequests(telegramUserId);
     } catch (error) {
       console.error(error);
       alert('Errore nella donazione');
@@ -273,10 +293,7 @@ export default function HomePage() {
         return;
       }
 
-      const userRes = await fetch(
-        `${BACKEND_URL}/api/users/by-telegram/${telegramUserId}`
-      );
-
+      const userRes = await fetch(`${BACKEND_URL}/api/users/by-telegram/${telegramUserId}`);
       const user = await userRes.json();
 
       if (!userRes.ok) {
@@ -310,6 +327,8 @@ export default function HomePage() {
 
       await loadMe(telegramUserId);
       await loadRequests();
+      await loadMyRequests(telegramUserId);
+
       if (isAdminUser) {
         await loadPendingRequests();
       }
@@ -412,6 +431,13 @@ export default function HomePage() {
     }
   }
 
+  function renderRequestStatus(status?: string) {
+    if (status === 'pending') return 'In attesa approvazione';
+    if (status === 'approved') return 'Approvata';
+    if (status === 'rejected') return 'Rifiutata';
+    return status || 'N/A';
+  }
+
   useEffect(() => {
     async function init() {
       try {
@@ -439,6 +465,7 @@ export default function HomePage() {
 
           await loadMe(telegramUser.id);
           await loadMyDonations(telegramUser.id);
+          await loadMyRequests(telegramUser.id);
 
           if (telegramUser.id === ADMIN_TELEGRAM_ID) {
             await loadPendingUsers();
@@ -532,6 +559,33 @@ export default function HomePage() {
         >
           Invia richiesta
         </button>
+      </section>
+
+      <section className="border rounded-xl p-4 shadow-sm">
+        <h1 className="text-2xl font-bold mb-4">Le mie richieste</h1>
+
+        {!telegramAvailable ? (
+          <p>Apri la Mini App dentro Telegram per vedere le tue richieste.</p>
+        ) : loadingMyRequests ? (
+          <p>Caricamento richieste...</p>
+        ) : myRequests.length === 0 ? (
+          <p>Nessuna richiesta creata.</p>
+        ) : (
+          <div className="space-y-3">
+            {myRequests.map((request) => (
+              <div key={request.id} className="border rounded p-3">
+                <p><strong>ID:</strong> {request.id}</p>
+                <p><strong>Titolo:</strong> {request.title}</p>
+                <p><strong>Descrizione:</strong> {request.description || 'Nessuna descrizione'}</p>
+                <p><strong>Target:</strong> {request.target_amount}€</p>
+                <p><strong>Raccolti:</strong> {request.current_amount}€</p>
+                <p><strong>Stato:</strong> {renderRequestStatus(request.status)}</p>
+                <p><strong>Progresso:</strong> {request.progress_percent}%</p>
+                <p className="font-mono">{request.progress_bar}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="border rounded-xl p-4 shadow-sm">
