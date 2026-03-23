@@ -431,13 +431,6 @@ export default function HomePage() {
     }
   }
 
-  function renderRequestStatus(status?: string) {
-    if (status === 'pending') return 'In attesa approvazione';
-    if (status === 'approved') return 'Approvata';
-    if (status === 'rejected') return 'Rifiutata';
-    return status || 'N/A';
-  }
-
   async function handleDeleteRequest(requestId: number) {
   try {
     const res = await fetch(`${BACKEND_URL}/api/requests/delete`, {
@@ -461,6 +454,13 @@ export default function HomePage() {
     alert('Errore eliminazione richiesta');
   }
 }
+
+  function renderRequestStatus(status?: string) {
+    if (status === 'pending') return 'In attesa approvazione';
+    if (status === 'approved') return 'Approvata';
+    if (status === 'rejected') return 'Rifiutata';
+    return status || 'N/A';
+  }
 
   useEffect(() => {
     async function init() {
@@ -697,27 +697,28 @@ export default function HomePage() {
                     <p><strong>Stato:</strong> {request.status}</p>
 
                     <div className="mt-3 flex gap-2 flex-wrap">
-  <button
-    className="bg-green-600 text-white px-4 py-2 rounded"
-    onClick={() => handleApproveRequest(request.id)}
-  >
-    Approva richiesta
-  </button>
+                      <button
+                        className="bg-green-600 text-white px-4 py-2 rounded"
+                        onClick={() => handleApproveRequest(request.id)}
+                      >
+                        Approva richiesta
+                      </button>
 
-  <button
-    className="bg-red-600 text-white px-4 py-2 rounded"
-    onClick={() => handleRejectRequest(request.id)}
-  >
-    Rifiuta richiesta
-  </button>
-
-  <button
-    className="bg-gray-800 text-white px-4 py-2 rounded"
-    onClick={() => handleDeleteRequest(request.id)}
-  >
-    Elimina richiesta
-  </button>
-</div>
+                      <button
+                        className="bg-red-600 text-white px-4 py-2 rounded"
+                        onClick={() => handleRejectRequest(request.id)}
+                      >
+                        Rifiuta richiesta
+                      </button>
+                      
+                      <button
+                        className="bg-gray-800 text-white px-4 py-2 rounded"
+                        onClick={() => handleDeleteRequest(request.id)}
+                     >
+                        Elimina richiesta
+                     </button>
+                
+                   </div>
                   </div>
                 ))}
               </div>
