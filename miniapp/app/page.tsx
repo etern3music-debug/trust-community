@@ -12,24 +12,31 @@ type RequestItem = {
   progress_bar: string;
 };
 
-const BACKEND_URL = 'trust-community-production-d22c.up.railway.app';
+const BACKEND_URL = 'https://trust-community-production-d22c.up.railway.app';
 
 export default function HomePage() {
   const [requests, setRequests] = useState<RequestItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   async function loadRequests() {
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/requests`);
-      const data = await res.json();
-      setRequests(data);
-    } catch (error) {
-      console.error('Errore caricamento richieste:', error);
-      setRequests([]);
-    } finally {
-      setLoading(false);
-    }
+  try {
+    console.log('BACKEND_URL:', BACKEND_URL);
+
+    const res = await fetch(`${BACKEND_URL}/api/requests`);
+    console.log('STATUS:', res.status);
+
+    const text = await res.text();
+    console.log('RAW RESPONSE:', text);
+
+    const data = JSON.parse(text);
+    setRequests(data);
+  } catch (error) {
+    console.error('ERRORE loadRequests:', error);
+    setRequests([]);
+  } finally {
+    setLoading(false);
   }
+}
 
   async function handleDonate(requestId: number) {
     try {
