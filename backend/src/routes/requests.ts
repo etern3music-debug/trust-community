@@ -359,10 +359,52 @@ async function rejectRequest(req, res) {
   return res.json(data);
 }
 
+async function deleteRequest(req, res) {
+  const { request_id } = req.body;
+
+  if (!request_id) {
+    return res.status(400).json({ error: 'request_id obbligatorio' });
+  }
+
+  const { data: requestData, error: requestError } = await supabase
+    .from('requests')
+    .select('*')
+    .eq('id', request_id)
+    .single();
+
+  if (requestError || !requestData) {
+    return res.status(404).json({ error: 'Richiesta non trovata' });
+  }
+
+  const { error: deleteDonationsError } = await supabase
+    .from('donations')
+    .delete()
+    .eq('request_id', request_id);
+
+  if (deleteDonationsError) {
+    return res.status(500).json({ error: deleteDonationsError.message });
+  }
+
+  const { error: deleteRequestError } = await supabase
+    .from('requests')
+    .delete()
+    .eq('id', request_id);
+
+  if (deleteRequestError) {
+    return res.status(500).json({ error: deleteRequestError.message });
+  }
+
+  return res.json({
+    message: 'Richiesta eliminata con successo',
+    request_id
+  });
+}
+
 module.exports = {
   createRequest,
   getRequests,
   getPendingRequests,
   approveRequest,
-  rejectRequest
+  rejectRequest,
+  deleteRequest
 };

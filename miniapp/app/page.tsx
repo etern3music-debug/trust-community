@@ -438,6 +438,30 @@ export default function HomePage() {
     return status || 'N/A';
   }
 
+  async function handleDeleteRequest(requestId: number) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/requests/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ request_id: requestId })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || 'Errore eliminazione richiesta');
+      return;
+    }
+
+    alert('Richiesta eliminata');
+    await loadPendingRequests();
+    await loadRequests();
+  } catch (error) {
+    console.error(error);
+    alert('Errore eliminazione richiesta');
+  }
+}
+
   useEffect(() => {
     async function init() {
       try {
@@ -672,21 +696,28 @@ export default function HomePage() {
                     <p><strong>Utente:</strong> {request.users?.display_name || 'Utente'}</p>
                     <p><strong>Stato:</strong> {request.status}</p>
 
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        className="bg-green-600 text-white px-4 py-2 rounded"
-                        onClick={() => handleApproveRequest(request.id)}
-                      >
-                        Approva richiesta
-                      </button>
+                    <div className="mt-3 flex gap-2 flex-wrap">
+  <button
+    className="bg-green-600 text-white px-4 py-2 rounded"
+    onClick={() => handleApproveRequest(request.id)}
+  >
+    Approva richiesta
+  </button>
 
-                      <button
-                        className="bg-red-600 text-white px-4 py-2 rounded"
-                        onClick={() => handleRejectRequest(request.id)}
-                      >
-                        Rifiuta richiesta
-                      </button>
-                    </div>
+  <button
+    className="bg-red-600 text-white px-4 py-2 rounded"
+    onClick={() => handleRejectRequest(request.id)}
+  >
+    Rifiuta richiesta
+  </button>
+
+  <button
+    className="bg-gray-800 text-white px-4 py-2 rounded"
+    onClick={() => handleDeleteRequest(request.id)}
+  >
+    Elimina richiesta
+  </button>
+</div>
                   </div>
                 ))}
               </div>

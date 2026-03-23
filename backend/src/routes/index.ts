@@ -15,7 +15,8 @@ const {
   getRequests,
   getPendingRequests,
   approveRequest,
-  rejectRequest
+  rejectRequest,
+  deleteRequest
 } = require('./requests');
 const { createDonation, confirmDonationReceipt, getDonations } = require('./donations');
 const {
@@ -43,6 +44,7 @@ router.get('/requests', getRequests);
 router.get('/requests/pending', getPendingRequests);
 router.post('/requests/approve', approveRequest);
 router.post('/requests/reject', rejectRequest);
+router.post('/requests/delete', deleteRequest);
 
 router.post('/donations', createDonation);
 router.post('/donations/confirm-receipt', confirmDonationReceipt);
