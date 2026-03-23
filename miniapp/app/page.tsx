@@ -45,10 +45,15 @@ type DonationItem = {
 };
 
 const BACKEND_URL = 'https://trust-community-production-d22c.up.railway.app';
+const ADMIN_TELEGRAM_ID = 5311155297;
 
 export default function HomePage() {
   const [requests, setRequests] = useState<RequestItem[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(true);
+
+  const [pendingUsers, setPendingUsers] = useState<any[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [isAdminUser, setIsAdminUser] = useState(false);
 
   const [me, setMe] = useState<MeData | null>(null);
   const [telegramAvailable, setTelegramAvailable] = useState(false);
@@ -101,6 +106,127 @@ export default function HomePage() {
       setMyDonations([]);
     }
   }
+
+  async function loadPendingUsers() {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/users/pending`);
+    const data = await res.json();
+
+    if (res.ok) {
+      setPendingUsers(data);
+    }
+  } catch (error) {
+    console.error('Errore caricamento utenti pending:', error);
+    setPendingUsers([]);
+  }
+}
+
+async function loadPendingRequests() {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/requests/pending`);
+    const data = await res.json();
+
+    if (res.ok) {
+      setPendingRequests(data);
+    }
+  } catch (error) {
+    console.error('Errore caricamento richieste pending:', error);
+    setPendingRequests([]);
+  }
+}
+
+async function handleApproveUser(userId: number, telegramUserId: number) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/users/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || 'Errore approvazione utente');
+      return;
+    }
+
+    alert('Utente approvato');
+    await loadPendingUsers();
+  } catch (error) {
+    console.error(error);
+    alert('Errore approvazione utente');
+  }
+}
+
+async function handleBanUser(userId: number) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/users/ban`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || 'Errore ban utente');
+      return;
+    }
+
+    alert('Utente bannato');
+    await loadPendingUsers();
+  } catch (error) {
+    console.error(error);
+    alert('Errore ban utente');
+  }
+}
+
+async function handleApproveRequest(requestId: number) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/requests/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ request_id: requestId })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || 'Errore approvazione richiesta');
+      return;
+    }
+
+    alert('Richiesta approvata');
+    await loadPendingRequests();
+    await loadRequests();
+  } catch (error) {
+    console.error(error);
+    alert('Errore approvazione richiesta');
+  }
+}
+
+async function handleRejectRequest(requestId: number) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/requests/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ request_id: requestId })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || 'Errore rifiuto richiesta');
+      return;
+    }
+
+    alert('Richiesta rifiutata');
+    await loadPendingRequests();
+  } catch (error) {
+    console.error(error);
+    alert('Errore rifiuto richiesta');
+  }
+}
 
   function getAmountForRequest(requestId: number) {
     return Number(amounts[requestId]);
@@ -294,6 +420,10 @@ export default function HomePage() {
           tg.ready();
           tg.expand();
 
+          if (telegramUser.id === ADMIN_TELEGRAM_ID) {
+  setIsAdminUser(true);
+}
+
           await fetch(`${BACKEND_URL}/api/users/ensure`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -306,6 +436,10 @@ export default function HomePage() {
 
           await loadMe(telegramUser.id);
           await loadMyDonations(telegramUser.id);
+          if (telegramUser.id === ADMIN_TELEGRAM_ID) {
+  await loadPendingUsers();
+  await loadPendingRequests();
+}
         } else {
           setTelegramAvailable(false);
         }
@@ -319,6 +453,85 @@ export default function HomePage() {
 
     init();
   }, []);
+
+  {isAdminUser && (
+  <section className="border rounded-xl p-4 shadow-sm">
+    <h1 className="text-2xl font-bold mb-4">Admin Panel</h1>
+
+    <div className="mb-6">
+      <h2 className="text-xl font-semibold mb-3">Utenti pending</h2>
+
+      {pendingUsers.length === 0 ? (
+        <p>Nessun utente pending.</p>
+      ) : (
+        <div className="space-y-3">
+          {pendingUsers.map((user) => (
+            <div key={user.id} className="border rounded p-3">
+              <p><strong>ID:</strong> {user.id}</p>
+              <p><strong>Nome:</strong> {user.display_name}</p>
+              <p><strong>Username:</strong> {user.username || 'N/A'}</p>
+              <p><strong>Telegram ID:</strong> {user.telegram_user_id}</p>
+              <p><strong>Stato:</strong> {user.status}</p>
+
+              <div className="mt-3 flex gap-2">
+                <button
+                  className="bg-green-600 text-white px-4 py-2 rounded"
+                  onClick={() => handleApproveUser(user.id, user.telegram_user_id)}
+                >
+                  Approva
+                </button>
+
+                <button
+                  className="bg-red-600 text-white px-4 py-2 rounded"
+                  onClick={() => handleBanUser(user.id)}
+                >
+                  Banna
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+
+    <div>
+      <h2 className="text-xl font-semibold mb-3">Richieste pending</h2>
+
+      {pendingRequests.length === 0 ? (
+        <p>Nessuna richiesta pending.</p>
+      ) : (
+        <div className="space-y-3">
+          {pendingRequests.map((request) => (
+            <div key={request.id} className="border rounded p-3">
+              <p><strong>ID:</strong> {request.id}</p>
+              <p><strong>Titolo:</strong> {request.title}</p>
+              <p><strong>Descrizione:</strong> {request.description || 'Nessuna descrizione'}</p>
+              <p><strong>Target:</strong> {request.target_amount}€</p>
+              <p><strong>Utente:</strong> {request.users?.display_name || 'Utente'}</p>
+              <p><strong>Stato:</strong> {request.status}</p>
+
+              <div className="mt-3 flex gap-2">
+                <button
+                  className="bg-green-600 text-white px-4 py-2 rounded"
+                  onClick={() => handleApproveRequest(request.id)}
+                >
+                  Approva richiesta
+                </button>
+
+                <button
+                  className="bg-red-600 text-white px-4 py-2 rounded"
+                  onClick={() => handleRejectRequest(request.id)}
+                >
+                  Rifiuta richiesta
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </section>
+)}
 
   return (
     <main className="p-6 space-y-6">
