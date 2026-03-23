@@ -10,7 +10,9 @@ async function createUser(req, res) {
         telegram_user_id,
         username,
         display_name,
-        status: status || 'pending'
+        status: status || 'pending',
+        score: 50,
+        level: 1
       }
     ])
     .select();
@@ -38,4 +40,42 @@ async function getUserByTelegramId(req, res) {
   return res.json(data);
 }
 
-module.exports = { createUser, getUserByTelegramId };
+async function ensureUser(req, res) {
+  const { telegram_user_id, username, display_name } = req.body;
+
+  if (!telegram_user_id) {
+    return res.status(400).json({ error: 'telegram_user_id obbligatorio' });
+  }
+
+  const { data: existingUser } = await supabase
+    .from('users')
+    .select('*')
+    .eq('telegram_user_id', telegram_user_id)
+    .single();
+
+  if (existingUser) {
+    return res.json(existingUser);
+  }
+
+  const { data: newUsers, error: insertError } = await supabase
+    .from('users')
+    .insert([
+      {
+        telegram_user_id,
+        username: username || null,
+        display_name: display_name || 'Nuovo utente',
+        status: 'pending',
+        score: 50,
+        level: 1
+      }
+    ])
+    .select();
+
+  if (insertError) {
+    return res.status(500).json({ error: insertError.message });
+  }
+
+  return res.json(newUsers[0]);
+}
+
+module.exports = { createUser, getUserByTelegramId, ensureUser };

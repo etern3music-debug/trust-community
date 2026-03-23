@@ -5,7 +5,12 @@ const cors = require('cors');
 dotenv.config();
 
 const { router } = require('./routes');
-require('./telegram/bot');
+
+console.log('ENABLE_BOT =', process.env.ENABLE_BOT);
+
+if (process.env.ENABLE_BOT === 'true') {
+  require('./telegram/bot');
+}
 
 const app = express();
 
