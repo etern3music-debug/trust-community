@@ -1,7 +1,15 @@
 const express = require('express');
 
 const { testSupabase } = require('./test');
-const { createUser, getUserByTelegramId, ensureUser, updatePaymentLink } = require('./users');
+const {
+  createUser,
+  getUserByTelegramId,
+  ensureUser,
+  updatePaymentLink,
+  getPendingUsers,
+  approveUser,
+  banUser
+} = require('./users');
 const { createRequest, getRequests } = require('./requests');
 const { createDonation, getDonations } = require('./donations');
 const {
@@ -19,6 +27,10 @@ router.post('/users', createUser);
 router.get('/users/by-telegram/:telegramId', getUserByTelegramId);
 router.post('/users/ensure', ensureUser);
 router.post('/users/payment-link', updatePaymentLink);
+
+router.get('/users/pending', getPendingUsers);
+router.post('/users/approve', approveUser);
+router.post('/users/ban', banUser);
 
 router.post('/requests', createRequest);
 router.get('/requests', getRequests);

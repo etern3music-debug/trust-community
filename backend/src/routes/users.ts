@@ -111,4 +111,68 @@ async function updatePaymentLink(req, res) {
   return res.json(data);
 }
 
-module.exports = { createUser, getUserByTelegramId, ensureUser, updatePaymentLink };
+async function getPendingUsers(req, res) {
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('status', 'pending')
+    .order('id', { ascending: true });
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  return res.json(data);
+}
+
+async function approveUser(req, res) {
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ error: 'user_id obbligatorio' });
+  }
+
+  const { data, error } = await supabase
+    .from('users')
+    .update({ status: 'verified' })
+    .eq('id', user_id)
+    .select()
+    .single();
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  return res.json(data);
+}
+
+async function banUser(req, res) {
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ error: 'user_id obbligatorio' });
+  }
+
+  const { data, error } = await supabase
+    .from('users')
+    .update({ status: 'banned' })
+    .eq('id', user_id)
+    .select()
+    .single();
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  return res.json(data);
+}
+
+module.exports = {
+  createUser,
+  getUserByTelegramId,
+  ensureUser,
+  updatePaymentLink,
+  getPendingUsers,
+  approveUser,
+  banUser
+};
