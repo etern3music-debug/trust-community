@@ -42,6 +42,7 @@ export default function HomePage() {
     try {
       const tg = (window as any).Telegram?.WebApp;
       const telegramUserId = tg?.initDataUnsafe?.user?.id;
+
       alert(`Telegram user id: ${telegramUserId}`);
 
       if (!telegramUserId) {
@@ -86,14 +87,18 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    const tg = (window as any).Telegram?.WebApp;
-    if (tg) {
-      tg.ready();
-      tg.expand();
-    }
+  const tg = (window as any).Telegram?.WebApp;
+  if (tg) {
+    tg.ready();
+    tg.expand();
+    console.log('Telegram WebApp trovato');
+    console.log('initDataUnsafe:', tg.initDataUnsafe);
+  } else {
+    console.log('Telegram WebApp NON trovato');
+  }
 
-    loadRequests();
-  }, []);
+  loadRequests();
+}, []);
 
   return (
     <main className="p-6">
