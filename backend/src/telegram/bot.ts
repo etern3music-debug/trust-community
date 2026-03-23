@@ -3,6 +3,12 @@ const axios = require('axios');
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new TelegramBot(token, { polling: true });
+const BACKEND_URL = 'http://localhost:3001';
+const ADMIN_TELEGRAM_ID = 5311155297;
+
+function isAdmin(msg: any) {
+  return msg.from?.id === ADMIN_TELEGRAM_ID;
+}
 
 // /start
 bot.onText(/\/start/, (msg) => {
@@ -27,6 +33,9 @@ bot.onText(/\/help/, async (msg) => {
 /profilo → mostra il tuo profilo
 /richieste → mostra le richieste attive
 /mie_richieste → mostra le richieste create da te
+/pending_requests → lista richieste da approvare
+/approve_request ID → approva richiesta
+/reject_request ID → rifiuta richiesta
 
 /crearichiesta titolo | descrizione | importo
 Esempio:
@@ -256,6 +265,209 @@ Livello: ${result.donor_new_level}`
   } catch (error) {
     const backendMessage =
       error.response?.data?.error || 'Errore nella donazione. Controlla request_id o profilo.';
+
+    await bot.sendMessage(chatId, `❌ ${backendMessage}`);
+  }
+});
+
+// /pending_users
+bot.onText(/\/pending_users/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  if (!isAdmin(msg)) {
+    await bot.sendMessage(chatId, '❌ Non autorizzato');
+    return;
+  }
+
+  try {
+    const res = await axios.get(`${BACKEND_URL}/api/users/pending`);
+    const users = res.data;
+
+    if (!users || users.length === 0) {
+      await bot.sendMessage(chatId, 'Nessun utente pending.');
+      return;
+    }
+
+    const text = users.map((u: any) => {
+      return `🕒 Pending user
+ID interno: ${u.id}
+Telegram ID: ${u.telegram_user_id}
+Nome: ${u.display_name}
+Username: ${u.username || 'N/A'}
+Stato: ${u.status}`;
+    }).join('\n\n');
+
+    await bot.sendMessage(chatId, text);
+  } catch (error) {
+    await bot.sendMessage(chatId, 'Errore nel recupero utenti pending.');
+  }
+});
+
+// /approve_user
+bot.onText(/\/approve_user (\d+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+
+  if (!isAdmin(msg)) {
+    await bot.sendMessage(chatId, '❌ Non autorizzato');
+    return;
+  }
+
+  try {
+    const userId = Number(match[1]);
+
+    const res = await axios.post(`${BACKEND_URL}/api/users/approve`, {
+      user_id: userId
+    });
+
+    const user = res.data;
+
+    await bot.sendMessage(
+      chatId,
+      `✅ Utente approvato
+
+ID: ${user.id}
+Nome: ${user.display_name}
+Stato: ${user.status}`
+    );
+  } catch (error) {
+    const backendMessage =
+      error.response?.data?.error || 'Errore nell’approvazione utente';
+
+    await bot.sendMessage(chatId, `❌ ${backendMessage}`);
+  }
+});
+
+// /ban_user
+bot.onText(/\/ban_user (\d+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+
+  if (!isAdmin(msg)) {
+    await bot.sendMessage(chatId, '❌ Non autorizzato');
+    return;
+  }
+
+  try {
+    const userId = Number(match[1]);
+
+    const res = await axios.post(`${BACKEND_URL}/api/users/ban`, {
+      user_id: userId
+    });
+
+    const user = res.data;
+
+    await bot.sendMessage(
+      chatId,
+      `🚫 Utente bannato
+
+ID: ${user.id}
+Nome: ${user.display_name}
+Stato: ${user.status}`
+    );
+  } catch (error) {
+    const backendMessage =
+      error.response?.data?.error || 'Errore nel ban utente';
+
+    await bot.sendMessage(chatId, `❌ ${backendMessage}`);
+  }
+});
+
+// /pending_requests
+bot.onText(/\/pending_requests/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  if (!isAdmin(msg)) {
+    await bot.sendMessage(chatId, '❌ Non autorizzato');
+    return;
+  }
+
+  try {
+    const res = await axios.get(`${BACKEND_URL}/api/requests/pending`);
+    const requests = res.data;
+
+    if (!requests || requests.length === 0) {
+      await bot.sendMessage(chatId, 'Nessuna richiesta pending.');
+      return;
+    }
+
+    const text = requests.map((r: any) => {
+      return `🕒 Richiesta pending
+ID: ${r.id}
+Utente: ${r.users?.display_name || 'Utente'}
+Titolo: ${r.title}
+Descrizione: ${r.description || 'Nessuna descrizione'}
+Target: ${r.target_amount}€
+Stato: ${r.status}`;
+    }).join('\n\n');
+
+    await bot.sendMessage(chatId, text);
+  } catch (error) {
+    await bot.sendMessage(chatId, 'Errore nel recupero richieste pending.');
+  }
+});
+
+// /approve_request
+bot.onText(/\/approve_request (\d+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+
+  if (!isAdmin(msg)) {
+    await bot.sendMessage(chatId, '❌ Non autorizzato');
+    return;
+  }
+
+  try {
+    const requestId = Number(match[1]);
+
+    const res = await axios.post(`${BACKEND_URL}/api/requests/approve`, {
+      request_id: requestId
+    });
+
+    const request = res.data;
+
+    await bot.sendMessage(
+      chatId,
+      `✅ Richiesta approvata
+
+ID: ${request.id}
+Titolo: ${request.title}
+Stato: ${request.status}`
+    );
+  } catch (error: any) {
+    const backendMessage =
+      error.response?.data?.error || 'Errore nell’approvazione richiesta';
+
+    await bot.sendMessage(chatId, `❌ ${backendMessage}`);
+  }
+});
+
+// /reject_request
+bot.onText(/\/reject_request (\d+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+
+  if (!isAdmin(msg)) {
+    await bot.sendMessage(chatId, '❌ Non autorizzato');
+    return;
+  }
+
+  try {
+    const requestId = Number(match[1]);
+
+    const res = await axios.post(`${BACKEND_URL}/api/requests/reject`, {
+      request_id: requestId
+    });
+
+    const request = res.data;
+
+    await bot.sendMessage(
+      chatId,
+      `🚫 Richiesta rifiutata
+
+ID: ${request.id}
+Titolo: ${request.title}
+Stato: ${request.status}`
+    );
+  } catch (error: any) {
+    const backendMessage =
+      error.response?.data?.error || 'Errore nel rifiuto richiesta';
 
     await bot.sendMessage(chatId, `❌ ${backendMessage}`);
   }

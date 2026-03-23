@@ -1,5 +1,5 @@
 const { supabase } = require('../config/supabase');
-const { sendTelegramMessage } = require('../telegram/sendMessage');
+const { sendTelegramMessage, sendTelegramDirectMessage } = require('../telegram/sendMessage');
 
 function buildProgressBar(current, target) {
   const safeTarget = target > 0 ? target : 1;
@@ -62,6 +62,7 @@ async function createRequest(req, res) {
         title,
         description,
         target_amount,
+        status: 'pending'
       },
     ])
     .select();
@@ -70,43 +71,10 @@ async function createRequest(req, res) {
     return res.status(500).json({ error: error.message });
   }
 
-  const createdRequest = data[0];
-
-  const progress = buildProgressBar(
-    createdRequest.current_amount || 0,
-    createdRequest.target_amount || 0
-  );
-
-  const message =
-`📢 Nuova richiesta #${createdRequest.id}
-
-👤 User ID: ${createdRequest.user_id}
-📝 Titolo: ${createdRequest.title}
-📄 Descrizione: ${createdRequest.description || 'Nessuna descrizione'}
-💰 Raccolti: ${createdRequest.current_amount || 0}€ / ${createdRequest.target_amount}€
-📊 Progresso: ${progress.percent}%
-${progress.bar}`;
-
-  try {
-    const telegramMsg = await sendTelegramMessage(message);
-
-    await supabase
-      .from('requests')
-      .update({
-        telegram_message_id: telegramMsg.message_id
-      })
-      .eq('id', createdRequest.id);
-  } catch (telegramError) {
-    console.error(
-      'Errore Telegram:',
-      telegramError.response?.data || telegramError.message
-    );
-  }
-
   return res.json(data);
 }
 
-// PRENDE TUTTE LE REQUEST + BARRA + PAYMENT LINK
+// SOLO REQUEST APPROVATE PER MINIAPP / PUBBLICO
 async function getRequests(req, res) {
   const { data, error } = await supabase
     .from('requests')
@@ -118,6 +86,7 @@ async function getRequests(req, res) {
       current_amount,
       user_id,
       telegram_message_id,
+      status,
       users (
         id,
         username,
@@ -125,6 +94,7 @@ async function getRequests(req, res) {
         payment_link
       )
     `)
+    .eq('status', 'approved')
     .order('id', { ascending: false });
 
   if (error) {
@@ -145,6 +115,7 @@ async function getRequests(req, res) {
       target_amount: request.target_amount,
       current_amount: request.current_amount,
       telegram_message_id: request.telegram_message_id,
+      status: request.status,
 
       progress_percent: progress.percent,
       progress_bar: progress.bar,
@@ -158,4 +129,173 @@ async function getRequests(req, res) {
   return res.json(formatted);
 }
 
-module.exports = { createRequest, getRequests };
+// RICHIESTE PENDING PER ADMIN
+async function getPendingRequests(req, res) {
+  const { data, error } = await supabase
+    .from('requests')
+    .select(`
+      id,
+      title,
+      description,
+      target_amount,
+      current_amount,
+      status,
+      user_id,
+      users (
+        id,
+        username,
+        display_name
+      )
+    `)
+    .eq('status', 'pending')
+    .order('id', { ascending: true });
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  return res.json(data);
+}
+
+// APPROVA REQUEST E PUBBLICA NEL CANALE + NOTIFICA UTENTE
+async function approveRequest(req, res) {
+  const { request_id } = req.body;
+
+  if (!request_id) {
+    return res.status(400).json({ error: 'request_id obbligatorio' });
+  }
+
+  const { data: requestData, error: requestError } = await supabase
+    .from('requests')
+    .select('*')
+    .eq('id', request_id)
+    .single();
+
+  if (requestError || !requestData) {
+    return res.status(404).json({ error: 'Richiesta non trovata' });
+  }
+
+  const { data: userData } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', requestData.user_id)
+    .single();
+
+  const { data: updatedRequest, error: updateError } = await supabase
+    .from('requests')
+    .update({ status: 'approved' })
+    .eq('id', request_id)
+    .select()
+    .single();
+
+  if (updateError) {
+    return res.status(500).json({ error: updateError.message });
+  }
+
+  const progress = buildProgressBar(
+    updatedRequest.current_amount || 0,
+    updatedRequest.target_amount || 0
+  );
+
+  const message =
+`📢 Nuova richiesta #${updatedRequest.id}
+
+👤 User ID: ${updatedRequest.user_id}
+📝 Titolo: ${updatedRequest.title}
+📄 Descrizione: ${updatedRequest.description || 'Nessuna descrizione'}
+💰 Raccolti: ${updatedRequest.current_amount || 0}€ / ${updatedRequest.target_amount}€
+📊 Progresso: ${progress.percent}%
+${progress.bar}`;
+
+  try {
+    const telegramMsg = await sendTelegramMessage(message);
+
+    await supabase
+      .from('requests')
+      .update({
+        telegram_message_id: telegramMsg.message_id
+      })
+      .eq('id', updatedRequest.id);
+  } catch (telegramError) {
+    console.error(
+      'Errore Telegram canale:',
+      telegramError.response?.data || telegramError.message
+    );
+  }
+
+  try {
+    if (userData?.telegram_user_id) {
+      await sendTelegramDirectMessage(
+        userData.telegram_user_id,
+        `✅ La tua richiesta è stata approvata.\n\nTitolo: ${updatedRequest.title}`
+      );
+    }
+  } catch (telegramError) {
+    console.error(
+      'Errore notifica approvazione richiesta:',
+      telegramError.response?.data || telegramError.message
+    );
+  }
+
+  return res.json(updatedRequest);
+}
+
+// RIFIUTA REQUEST + NOTIFICA UTENTE
+async function rejectRequest(req, res) {
+  const { request_id } = req.body;
+
+  if (!request_id) {
+    return res.status(400).json({ error: 'request_id obbligatorio' });
+  }
+
+  const { data: requestData, error: requestError } = await supabase
+    .from('requests')
+    .select('*')
+    .eq('id', request_id)
+    .single();
+
+  if (requestError || !requestData) {
+    return res.status(404).json({ error: 'Richiesta non trovata' });
+  }
+
+  const { data: userData } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', requestData.user_id)
+    .single();
+
+  const { data, error } = await supabase
+    .from('requests')
+    .update({ status: 'rejected' })
+    .eq('id', request_id)
+    .select()
+    .single();
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  try {
+    if (userData?.telegram_user_id) {
+      await sendTelegramDirectMessage(
+        userData.telegram_user_id,
+        `❌ La tua richiesta è stata rifiutata.\n\nTitolo: ${data.title}`
+      );
+    }
+  } catch (telegramError) {
+    console.error(
+      'Errore notifica rifiuto richiesta:',
+      telegramError.response?.data || telegramError.message
+    );
+  }
+
+  return res.json(data);
+}
+
+module.exports = {
+  createRequest,
+  getRequests,
+  getPendingRequests,
+  approveRequest,
+  rejectRequest
+};

@@ -10,7 +10,13 @@ const {
   approveUser,
   banUser
 } = require('./users');
-const { createRequest, getRequests } = require('./requests');
+const {
+  createRequest,
+  getRequests,
+  getPendingRequests,
+  approveRequest,
+  rejectRequest
+} = require('./requests');
 const { createDonation, getDonations } = require('./donations');
 const {
   getProfile,
@@ -27,13 +33,15 @@ router.post('/users', createUser);
 router.get('/users/by-telegram/:telegramId', getUserByTelegramId);
 router.post('/users/ensure', ensureUser);
 router.post('/users/payment-link', updatePaymentLink);
-
 router.get('/users/pending', getPendingUsers);
 router.post('/users/approve', approveUser);
 router.post('/users/ban', banUser);
 
 router.post('/requests', createRequest);
 router.get('/requests', getRequests);
+router.get('/requests/pending', getPendingRequests);
+router.post('/requests/approve', approveRequest);
+router.post('/requests/reject', rejectRequest);
 
 router.post('/donations', createDonation);
 router.get('/donations', getDonations);

@@ -1,4 +1,5 @@
 const { supabase } = require('../config/supabase');
+const { sendTelegramDirectMessage } = require('../telegram/sendMessage');
 
 async function createUser(req, res) {
   const { telegram_user_id, username, display_name, status } = req.body;
@@ -143,6 +144,18 @@ async function approveUser(req, res) {
     return res.status(500).json({ error: error.message });
   }
 
+  try {
+    await sendTelegramDirectMessage(
+      data.telegram_user_id,
+      `✅ Il tuo account è stato approvato.\n\nOra puoi creare richieste nella piattaforma.`
+    );
+  } catch (telegramError) {
+    console.error(
+      'Errore notifica approvazione utente:',
+      telegramError.response?.data || telegramError.message
+    );
+  }
+
   return res.json(data);
 }
 
@@ -162,6 +175,18 @@ async function banUser(req, res) {
 
   if (error) {
     return res.status(500).json({ error: error.message });
+  }
+
+  try {
+    await sendTelegramDirectMessage(
+      data.telegram_user_id,
+      `🚫 Il tuo account è stato sospeso o bannato.\n\nSe pensi sia un errore, contatta l’amministrazione.`
+    );
+  } catch (telegramError) {
+    console.error(
+      'Errore notifica ban utente:',
+      telegramError.response?.data || telegramError.message
+    );
   }
 
   return res.json(data);
