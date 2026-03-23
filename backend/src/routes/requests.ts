@@ -93,6 +93,34 @@ async function createRequest(req, res) {
     });
   }
 
+    const { data: latestRequest, error: latestRequestError } = await supabase
+    .from('requests')
+    .select('*')
+    .eq('user_id', user_id)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (latestRequestError) {
+    return res.status(500).json({ error: latestRequestError.message });
+  }
+
+  if (latestRequest && latestRequest.length > 0) {
+    const lastCreatedAt = new Date(latestRequest[0].created_at).getTime();
+    const now = Date.now();
+    const diffMs = now - lastCreatedAt;
+
+    const cooldownMs = 24 * 60 * 60 * 1000; // 24 ore
+
+    if (diffMs < cooldownMs) {
+      const remainingMs = cooldownMs - diffMs;
+      const remainingHours = Math.ceil(remainingMs / (60 * 60 * 1000));
+
+      return res.status(400).json({
+        error: `Devi attendere ancora circa ${remainingHours} ore prima di creare una nuova richiesta`
+      });
+    }
+  }
+
   const { data, error } = await supabase
     .from('requests')
     .insert([
