@@ -400,10 +400,38 @@ async function deleteRequest(req, res) {
   });
 }
 
+async function getApprovedRequests(req, res) {
+  const { data, error } = await supabase
+    .from('requests')
+    .select(`
+      id,
+      title,
+      description,
+      target_amount,
+      current_amount,
+      status,
+      user_id,
+      users (
+        id,
+        username,
+        display_name
+      )
+    `)
+    .eq('status', 'approved')
+    .order('id', { ascending: false });
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  return res.json(data);
+}
+
 module.exports = {
   createRequest,
   getRequests,
   getPendingRequests,
+  getApprovedRequests,
   approveRequest,
   rejectRequest,
   deleteRequest

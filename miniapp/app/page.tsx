@@ -69,6 +69,7 @@ export default function HomePage() {
   const [pendingUsers, setPendingUsers] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [isAdminUser, setIsAdminUser] = useState(false);
+  const [approvedAdminRequests, setApprovedAdminRequests] = useState<any[]>([]);
 
   async function loadRequests() {
     try {
@@ -189,6 +190,20 @@ export default function HomePage() {
 
     window.open(paymentUrl, '_blank');
   }
+
+  async function loadApprovedAdminRequests() {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/requests/approved`);
+    const data = await res.json();
+
+    if (res.ok) {
+      setApprovedAdminRequests(data);
+    }
+  } catch (error) {
+    console.error('Errore caricamento richieste approvate:', error);
+    setApprovedAdminRequests([]);
+  }
+}
 
   async function handleConfirm(requestId: number) {
     try {
@@ -448,6 +463,7 @@ export default function HomePage() {
 
     alert('Richiesta eliminata');
     await loadPendingRequests();
+    await loadApprovedAdminRequests();
     await loadRequests();
   } catch (error) {
     console.error(error);
@@ -494,6 +510,7 @@ export default function HomePage() {
           if (telegramUser.id === ADMIN_TELEGRAM_ID) {
             await loadPendingUsers();
             await loadPendingRequests();
+            await loadApprovedAdminRequests();
           }
         } else {
           setTelegramAvailable(false);
@@ -724,6 +741,36 @@ export default function HomePage() {
               </div>
             )}
           </div>
+          <div className="mt-6">
+  <h2 className="text-xl font-semibold mb-3">Richieste approvate</h2>
+
+  {approvedAdminRequests.length === 0 ? (
+    <p>Nessuna richiesta approvata.</p>
+  ) : (
+    <div className="space-y-3">
+      {approvedAdminRequests.map((request) => (
+        <div key={request.id} className="border rounded p-3">
+          <p><strong>ID:</strong> {request.id}</p>
+          <p><strong>Titolo:</strong> {request.title}</p>
+          <p><strong>Descrizione:</strong> {request.description || 'Nessuna descrizione'}</p>
+          <p><strong>Target:</strong> {request.target_amount}€</p>
+          <p><strong>Raccolti:</strong> {request.current_amount}€</p>
+          <p><strong>Utente:</strong> {request.users?.display_name || 'Utente'}</p>
+          <p><strong>Stato:</strong> {request.status}</p>
+
+          <div className="mt-3 flex gap-2">
+            <button
+              className="bg-gray-800 text-white px-4 py-2 rounded"
+              onClick={() => handleDeleteRequest(request.id)}
+            >
+              Elimina richiesta
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+</div>
         </section>
       )}
 
